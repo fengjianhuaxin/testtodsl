@@ -1,5 +1,6 @@
 ﻿"""Query plan agent (Step A) - build entity subgraph and join strategy."""
 import re
+from string import Template
 
 from agents.base_agent import BaseAgent
 
@@ -22,9 +23,11 @@ class QueryPlanAgent(BaseAgent):
         "未配置",
     )
 
-    def __init__(self, ontology_manager):
+    def __init__(self, ontology_manager, llm_client=None, prompt_manager=None):
         super().__init__("查询规划智能体", "从本体中定位所需实体并构建关联路径(步骤A)")
         self.ontology = ontology_manager
+        self.llm = llm_client
+        self.prompts = prompt_manager
 
     def run(self, input_data: dict) -> dict:
         intent = input_data["clarified_intent"]
@@ -86,6 +89,10 @@ class QueryPlanAgent(BaseAgent):
         return {**input_data, "query_plan": subgraph}
 
     def _infer_join_type(self, question_text: str, left_entity: str, right_entity: str) -> tuple[str, str]:
+        llm_decision = self._infer_join_type_with_llm(question_text, left_entity, right_entity)
+        if llm_decision:
+            return llm_decision
+
         text = str(question_text or "").strip()
         if not text:
             return "inner", "default"
@@ -99,3 +106,79 @@ class QueryPlanAgent(BaseAgent):
             return "left", "missing_relation_pattern"
 
         return "inner", "default"
+
+    def _infer_join_type_with_llm(self, question_text: str, left_entity: str, right_entity: str) -> tuple[str, str] | None:
+        if not self.llm:
+            return None
+
+        left_label = self._entity_label(left_entity)
+        right_label = self._entity_label(right_entity)
+        system_prompt = self._render_prompt(
+            key="join_type_system",
+            default_template=(
+                "你是SQL JOIN类型判定器。"
+                "仅判断两表连接类型，返回JSON且只包含两个字段："
+                "{\"type\":\"left join或join\",\"reason\":\"简短原因\"}。"
+                "规则："
+                "1) 当问题要求左侧主体全量保留（即使右侧无匹配也要保留）时，type=left join。"
+                "2) 其余场景 type=join。"
+                "3) 禁止输出除type/reason外的字段。"
+            ),
+            context={},
+        )
+        user_prompt = self._render_prompt(
+            key="join_type_user",
+            default_template=(
+                "问题: $question\n"
+                "左侧实体: $left_entity($left_label)\n"
+                "右侧实体: $right_entity($right_label)\n"
+                "请输出JSON。"
+            ),
+            context={
+                "question": question_text,
+                "left_entity": left_entity,
+                "left_label": left_label,
+                "right_entity": right_entity,
+                "right_label": right_label,
+            },
+        )
+
+        try:
+            parsed = self.llm.chat_json(system_prompt, user_prompt)
+        except Exception as exc:
+            self.log(f"JOIN类型模型判定失败，回退规则: {left_entity}->{right_entity}, err={exc}")
+            return None
+
+        if not isinstance(parsed, dict):
+            return None
+
+        join_type = self._normalize_join_type(str(parsed.get("type", "")).strip())
+        if not join_type:
+            return None
+
+        reason = str(parsed.get("reason", "")).strip() or "llm"
+        return join_type, f"llm:{reason}"
+
+    @staticmethod
+    def _normalize_join_type(value: str) -> str:
+        text = str(value or "").strip().lower()
+        if text in {"left join", "left_join", "left"}:
+            return "left"
+        if text in {"join", "inner join", "inner_join", "inner"}:
+            return "inner"
+        return ""
+
+    def _entity_label(self, entity_name: str) -> str:
+        entity = self.ontology.get_entity(entity_name)
+        if isinstance(entity, dict):
+            return str(entity.get("label", "")).strip()
+        return ""
+
+    def _render_prompt(self, key: str, default_template: str, context: dict) -> str:
+        if self.prompts:
+            return self.prompts.render(key, context=context, fallback_template=default_template)
+        try:
+            safe_context = {k: str(v) for k, v in (context or {}).items()}
+            return Template(default_template).safe_substitute(**safe_context)
+        except Exception:
+            return default_template

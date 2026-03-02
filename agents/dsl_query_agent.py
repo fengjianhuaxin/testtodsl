@@ -137,6 +137,7 @@ class DSLQueryAgent(BaseAgent):
         join_parts = []
         select_infos = []
         pushed_to_on = set()
+        join_pairs = []
 
         for index, entity in enumerate(entities):
             entity_name = entity["name"]
@@ -154,6 +155,15 @@ class DSLQueryAgent(BaseAgent):
             join_type = join_type_map.get((str(prev_entity).upper(), str(entity_name).upper()), "inner")
             join_keyword = "LEFT JOIN" if join_type == "left" else "JOIN"
             if join_on:
+                join_pairs.append(
+                    {
+                        "left_entity": str(prev_entity).upper(),
+                        "right_entity": str(entity_name).upper(),
+                        "right_alias": alias,
+                        "left_actual": str(join_on[0]),
+                        "right_actual": str(join_on[1]),
+                    }
+                )
                 on_parts = [f"{prev_alias}.{join_on[0]} = {alias}.{join_on[1]}"]
                 if join_type == "left":
                     for cond_index, condition in enumerate(conditions):
@@ -203,7 +213,16 @@ class DSLQueryAgent(BaseAgent):
             })
 
         calc_type = calc_rule.get("type", "detail")
-        calc_params = calc_rule.get("params", {})
+        calc_params = dict(calc_rule.get("params", {})) if isinstance(calc_rule, dict) else {}
+        if calc_type == "group_count":
+            self._prepare_group_count_params(
+                source_id=source_id,
+                entities=entities,
+                table_aliases=table_aliases,
+                select_infos=select_infos,
+                calc_params=calc_params,
+                join_pairs=join_pairs,
+            )
         select_sql = self._build_select_sql(calc_type, calc_params, fields, select_infos)
 
         where_parts = []
@@ -368,6 +387,152 @@ class DSLQueryAgent(BaseAgent):
         if text in {"left", "left_join", "left join"}:
             return "left"
         return "inner"
+
+    def _prepare_group_count_params(
+        self,
+        source_id: str,
+        entities: list,
+        table_aliases: dict,
+        select_infos: list,
+        calc_params: dict,
+        join_pairs: list,
+    ):
+        target_sql = str(calc_params.get("group_count_target_sql", "")).strip()
+        if target_sql:
+            return
+
+        group_by = calc_params.get("group_by", [])
+        if isinstance(group_by, str):
+            group_by = [group_by]
+        if not isinstance(group_by, list):
+            group_by = []
+
+        group_infos = []
+        for group_field in group_by:
+            info = self._resolve_select_info(select_infos, group_field)
+            if info:
+                group_infos.append(info)
+
+        metric_candidates = [info for info in select_infos if info not in group_infos]
+        if metric_candidates:
+            return
+
+        grouped_entities = {
+            str(info.get("entity", "")).strip().upper()
+            for info in group_infos
+            if str(info.get("entity", "")).strip()
+        }
+
+        if not grouped_entities and entities:
+            grouped_entities.add(str(entities[0].get("name", "")).strip().upper())
+
+        selected_entity = ""
+        selected_alias = ""
+        join_right_actual = ""
+
+        for pair in join_pairs:
+            right_entity = str(pair.get("right_entity", "")).strip().upper()
+            if not right_entity or right_entity in grouped_entities:
+                continue
+            selected_entity = right_entity
+            selected_alias = str(pair.get("right_alias", "")).strip()
+            join_right_actual = str(pair.get("right_actual", "")).strip()
+            break
+
+        if not selected_entity:
+            for entity in entities:
+                name = str(entity.get("name", "")).strip().upper()
+                if name and name not in grouped_entities:
+                    selected_entity = name
+                    selected_alias = table_aliases.get(name) or table_aliases.get(name.upper(), "")
+                    break
+
+        if not selected_entity:
+            return
+
+        inferred_actual = self._infer_count_field_for_entity(
+            source_id=source_id,
+            entity_name=selected_entity,
+            exclude_actual={join_right_actual} if join_right_actual else set(),
+        )
+        if not inferred_actual:
+            return
+
+        alias = selected_alias or table_aliases.get(selected_entity) or ""
+        if not alias:
+            return
+
+        calc_params["group_count_target_sql"] = f"{alias}.{inferred_actual}"
+        calc_params["group_count_distinct"] = True
+        self.log(
+            f"[{source_id}] group_count计数目标推断: "
+            f"{selected_entity}.{inferred_actual} (distinct)"
+        )
+
+    def _infer_count_field_for_entity(self, source_id: str, entity_name: str, exclude_actual: set | None = None) -> str:
+        exclude = {str(item).strip().upper() for item in (exclude_actual or set()) if str(item).strip()}
+        field_mapping = self.mapping.get_field_mapping(source_id, entity_name)
+        if not isinstance(field_mapping, dict) or not field_mapping:
+            return ""
+
+        candidates = []
+        for onto_field, actual_field in field_mapping.items():
+            onto_text = str(onto_field or "").strip().upper()
+            actual_text = str(actual_field or "").strip()
+            if not onto_text or not actual_text:
+                continue
+            if actual_text.upper() in exclude:
+                continue
+            candidates.append((onto_text, actual_text))
+
+        if not candidates:
+            return ""
+
+        entity_tokens = [token for token in str(entity_name or "").upper().split("_") if token]
+        positive_tokens = {
+            "SYSTEM",
+            "INFO",
+            "PROJECT",
+            "TASK",
+            "CATALOG",
+            "RESOURCE",
+            "DATA",
+            "DATASET",
+            "COMPONENT",
+            "SERVER",
+            "DEVICE",
+            "MACHINE",
+            "STANDARD",
+            "OPERATION",
+        }
+        negative_tokens = {"DEPT", "AREA", "OFFICE", "TOP", "ROWGUID", "ROW_ID", "IS_DELETE"}
+
+        best_score = -10**9
+        best_field = ""
+        for onto_text, actual_text in candidates:
+            score = 0
+            if onto_text.endswith("_CODE"):
+                score += 30
+            if onto_text.endswith("_ID"):
+                score += 20
+            if "CODE" in onto_text:
+                score += 10
+
+            for token in positive_tokens:
+                if token in onto_text:
+                    score += 8
+            for token in entity_tokens:
+                if token and token in onto_text:
+                    score += 15
+            for token in negative_tokens:
+                if token in onto_text:
+                    score -= 18
+
+            if score > best_score:
+                best_score = score
+                best_field = actual_text
+
+        return best_field or candidates[0][1]
 
     def _build_where_condition(self, alias: str, actual_field: str, op: str, value):
         column = f"{alias}.{actual_field}" if alias else str(actual_field)
@@ -596,15 +761,30 @@ class DSLQueryAgent(BaseAgent):
             if isinstance(group_by, str):
                 group_by = [group_by]
 
+            group_infos = []
             group_fields_sql = []
             for group_field in group_by:
                 info = self._resolve_select_info(select_infos, group_field)
                 if not info:
                     continue
+                group_infos.append(info)
                 group_fields_sql.append(f"{info['sql_expr']} AS {self._format_alias(info['alias'])}")
 
             if group_fields_sql:
-                return f"SELECT {', '.join(group_fields_sql)}, COUNT(*) AS count_value"
+                metric_candidates = [info for info in select_infos if info not in group_infos]
+                count_expr = "COUNT(*)"
+                if metric_candidates:
+                    target_sql = str(metric_candidates[0].get("sql_expr", "")).strip()
+                    if target_sql:
+                        count_expr = f"COUNT({target_sql})"
+                else:
+                    target_sql = str(calc_params.get("group_count_target_sql", "")).strip()
+                    if target_sql:
+                        if bool(calc_params.get("group_count_distinct")):
+                            count_expr = f"COUNT(DISTINCT {target_sql})"
+                        else:
+                            count_expr = f"COUNT({target_sql})"
+                return f"SELECT {', '.join(group_fields_sql)}, {count_expr} AS count_value"
             if select_infos:
                 detail_parts = [f"{info['sql_expr']} AS {self._format_alias(info['alias'])}" for info in select_infos]
                 return f"SELECT {', '.join(detail_parts)}"

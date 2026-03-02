@@ -48,7 +48,7 @@ class Orchestrator:
             ("01_意图澄清", IntentClarifyAgent(self.llm, self.ontology, self.knowledge, self.prompts)),
             ("02_知识验证", KnowledgeVerifyAgent(self.ontology)),
             ("03_调度", DispatchAgent()),
-            ("04_查询规划A", QueryPlanAgent(self.ontology)),
+            ("04_查询规划A", QueryPlanAgent(self.ontology, self.llm, self.prompts)),
             ("05_条件筛选B", ConditionFilterAgent(self.ontology)),
             ("05B_值归一", ValueResolveAgent(self.llm, self.mapping, self.prompts)),
             ("06_字段提取B", FieldExtractAgent(self.ontology)),

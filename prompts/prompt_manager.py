@@ -137,6 +137,25 @@ $prop_desc
             "description": "步骤00：注入原始问题，变量：$question",
             "template": "原始问题: $question",
         },
+        "join_type_system": {
+            "name": "JOIN判定-系统提示词",
+            "description": "步骤04：判定两实体连接类型（left join/join）",
+            "template": """你是SQL JOIN类型判定器。
+仅判断两表连接类型，返回JSON且只包含两个字段：
+{"type":"left join或join","reason":"简短原因"}。
+规则：
+1) 当问题要求左侧主体全量保留（即使右侧无匹配也要保留）时，type=left join。
+2) 其余场景 type=join。
+3) 禁止输出除type/reason外的字段。""",
+        },
+        "join_type_user": {
+            "name": "JOIN判定-用户提示词",
+            "description": "步骤04：变量：$question $left_entity $left_label $right_entity $right_label",
+            "template": """问题: $question
+左侧实体: $left_entity($left_label)
+右侧实体: $right_entity($right_label)
+请输出JSON。""",
+        },
         "value_resolve_closed_set_system": {
             "name": "值归一闭集-系统提示词",
             "description": "步骤05B：闭集值选择，只允许从候选值中选",
