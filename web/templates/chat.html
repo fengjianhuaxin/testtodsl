@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新点本体问答系统</title>
+    <link rel="stylesheet" href="/static/css/common.css">
+    <link rel="stylesheet" href="/static/css/chat.css">
+    <script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"></script>
+</head>
+
+<body>
+    <!-- 未登录遮罩 -->
+    <div id="loginOverlay" class="login-overlay" style="display:none">
+        <div class="overlay-content">
+            <div class="overlay-icon">🔒</div>
+            <h2>请先登录</h2>
+            <p>您需要登录后才能使用本系统</p>
+            <a href="/login" class="overlay-btn">前往登录</a>
+        </div>
+    </div>
+
+    <div class="app-container" id="appContainer">
+        <!-- 左侧边栏 -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <span class="logo-icon">🎓</span>
+                    <span class="logo-text">新点问答</span>
+                </div>
+                <button class="sidebar-toggle" id="sidebarToggle" title="收起侧栏">☰</button>
+            </div>
+
+            <div class="user-info" id="userInfo">
+                <div class="user-avatar" id="userAvatar">👤</div>
+                <div class="user-detail">
+                    <div class="user-name" id="userName">未登录</div>
+                    <div class="user-role" id="userRole"></div>
+                </div>
+            </div>
+
+            <button class="new-chat-btn" onclick="startNewChat()">
+                <span>＋</span> 新建对话
+            </button>
+
+            <div class="history-section">
+                <div class="history-title">历史记录</div>
+                <div class="history-list" id="historyList">
+                    <div class="history-empty">暂无历史记录</div>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <button class="footer-btn admin-btn" id="adminBtn" onclick="window.location.href='/admin'"
+                    style="display:none">
+                    <span>🏢</span> 管理端
+                </button>
+                <button class="footer-btn logout-btn" onclick="doLogout()">
+                    <span>🚪</span> 登出系统
+                </button>
+            </div>
+        </aside>
+
+        <!-- 中间聊天区 -->
+        <main class="chat-main" id="chatMain">
+            <!-- 欢迎页 -->
+            <div class="welcome" id="welcomeScreen">
+                <div class="welcome-icon">🤖</div>
+                <h1>欢迎使用新点本体问答系统</h1>
+                <p>基于本体论的多智能体数据协作平台，支持跨数据源自然语言查询</p>
+                <div class="welcome-features">
+                    <div class="feature-card">
+                        <span>🔍</span>
+                        <div>智能问答</div>
+                        <small>自然语言查询多数据源</small>
+                    </div>
+                    <div class="feature-card">
+                        <span>🧠</span>
+                        <div>思维链展示</div>
+                        <small>12步Agent推理全过程</small>
+                    </div>
+                    <div class="feature-card">
+                        <span>📊</span>
+                        <div>可视化图表</div>
+                        <small>自动生成统计图表</small>
+                    </div>
+                </div>
+                <div class="welcome-hints">
+                    <p>试试这些问题：</p>
+                    <div class="hint-chip" onclick="askQuestion('统计A大学男生和女生的人数')">统计A大学男生和女生的人数</div>
+                    <div class="hint-chip" onclick="askQuestion('计算所有大学的学生高等数学平均成绩')">计算所有大学的学生高等数学平均成绩</div>
+                    <div class="hint-chip" onclick="askQuestion('查询B大学计算机学院的教师信息')">查询B大学计算机学院的教师信息</div>
+                </div>
+            </div>
+
+            <!-- 消息列表 -->
+            <div class="messages" id="messagesContainer" style="display:none">
+                <div class="messages-list" id="messagesList"></div>
+            </div>
+
+            <!-- 无权限提示 -->
+            <div class="no-permission" id="noPermission" style="display:none">
+                <span>🚫</span> 您没有查询权限，请联系管理员开通
+            </div>
+
+            <!-- 输入区 -->
+            <div class="input-area" id="inputArea">
+                <div class="input-wrapper">
+                    <textarea id="questionInput" placeholder="请输入您的问题..." rows="1"
+                        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendQuestion();}"></textarea>
+                    <button class="send-btn" id="sendBtn" onclick="sendQuestion()" title="发送">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="input-hint">
+                    <span class="depth-analysis" onclick="toggleDepthAnalysis()">
+                        <span id="depthIcon">🔬</span> 深度分析
+                    </span>
+                    <span class="input-tip">Enter 发送，Shift+Enter 换行</span>
+                </div>
+            </div>
+        </main>
+
+        <!-- 右侧图谱面板 -->
+        <aside class="graph-panel" id="graphPanel">
+            <div class="graph-header">
+                <span class="graph-title">知识图谱</span>
+                <div class="graph-controls">
+                    <button onclick="resetGraphZoom()" title="重置视图">🔄</button>
+                    <button onclick="toggleGraphPanel()" title="收起" id="graphToggle">✕</button>
+                </div>
+            </div>
+            <div class="graph-container" id="graphContainer"></div>
+            <div class="graph-legend" id="graphLegend"></div>
+        </aside>
+    </div>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/graph.js"></script>
+    <script src="/static/js/chat.js"></script>
+</body>
+
+</html>
