@@ -495,9 +495,13 @@ async function loadMappingForSource() {
         let html = '';
         for (const [entity, m] of Object.entries(tm)) {
             const fm = m.field_mappings || {};
+            const fieldSemantics = m.field_value_semantics || m.value_semantics || {};
+            const semanticsCount = Object.keys(fieldSemantics).length;
             html += `<div class="card">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                    <div class="card-title" style="margin:0">${entity} → ${m.table_name}</div>
+                    <div class="card-title" style="margin:0">${entity} → ${m.table_name}
+                        <span class="badge badge-yellow" style="margin-left:8px">值语义字段 ${semanticsCount}</span>
+                    </div>
                     <div style="display:flex;gap:6px">
                         <button class="btn btn-primary btn-sm" onclick="llmAnalyze('${sourceId}','${entity}','${m.file_name}')">LLM 预分析</button>
                         <button class="btn btn-secondary btn-sm" onclick="showEditMappingModal('${sourceId}','${entity}')">编辑</button>
@@ -572,6 +576,55 @@ function showAddMappingModal() {
         });
         closeModal(); showToast('创建成功，请使用LLM预分析或手动编辑字段映射', 'success');
     });
+}
+
+async function showEditMappingModal(sourceId, entityName) {
+    try {
+        const [mapping, tables] = await Promise.all([
+            API.getMapping(sourceId),
+            API.getTables(sourceId)
+        ]);
+        const current = (mapping.table_mappings || {})[entityName];
+        if (!current) {
+            showToast('映射不存在', 'error');
+            return;
+        }
+
+        const tableNames = (tables || []).map(t => t.table_name).filter(Boolean);
+        const fileNames = (tables || []).map(t => t.file_name).filter(Boolean);
+        const tableHint = tableNames.length ? `可选表: ${tableNames.join(', ')}` : '未发现表结构';
+        const fileHint = fileNames.length ? `可选文件: ${fileNames.join(', ')}` : '未发现文件';
+        const fieldSemantics = current.field_value_semantics || current.value_semantics || {};
+
+        showModal(`编辑映射: ${entityName}`, `
+            <div class="form-row"><label>表名</label><input class="form-input" id="m-mtable" value="${escHtml(current.table_name || '')}"></div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:-8px;margin-bottom:8px">${escHtml(tableHint)}</div>
+            <div class="form-row"><label>文件名</label><input class="form-input" id="m-mfile" value="${escHtml(current.file_name || '')}"></div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:-8px;margin-bottom:8px">${escHtml(fileHint)}</div>
+            <div class="form-row">
+                <label>字段映射(JSON)</label>
+                <textarea class="form-input" id="m-mfieldmap" rows="10">${escHtml(JSON.stringify(current.field_mappings || {}, null, 2))}</textarea>
+            </div>
+            <div class="form-row">
+                <label>字段值语义(JSON，数据层)</label>
+                <textarea class="form-input" id="m-mvaluesem" rows="12" placeholder='{"IS_UPDATE_ON_TIME":{"closed_set":["是","否"],"labels":{"是":"按时更新","否":"未按时更新"},"aliases":{"按时更新":"是","未按时更新":"否"}}}'>${escHtml(JSON.stringify(fieldSemantics, null, 2))}</textarea>
+            </div>
+        `, async () => {
+            const fieldMappings = parseJsonObjectWithLabel(gv('m-mfieldmap'), '字段映射JSON');
+            const fieldValueSemantics = parseJsonObjectWithLabel(gv('m-mvaluesem'), '字段值语义JSON');
+            await API.updateEntityMapping(sourceId, entityName, {
+                table_name: gv('m-mtable'),
+                file_name: gv('m-mfile'),
+                field_mappings: fieldMappings,
+                field_value_semantics: fieldValueSemantics
+            });
+            closeModal();
+            loadMappingForSource();
+            showToast('映射已更新', 'success');
+        });
+    } catch (e) {
+        showToast(e.message || '加载映射失败', 'error');
+    }
 }
 
 // ============================================================
@@ -1366,15 +1419,19 @@ function stringifyAliasList(aliases) {
     return aliases.join(', ');
 }
 function parseJsonObject(text) {
+    return parseJsonObjectWithLabel(text, 'JSON');
+}
+
+function parseJsonObjectWithLabel(text, label) {
     if (!text || !text.trim()) return {};
     try {
         const parsed = JSON.parse(text);
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-            throw new Error('蹇呴』鏄?JSON 瀵硅薄');
+            throw new Error('must be json object');
         }
         return parsed;
     } catch (e) {
-        throw new Error('鍊煎埆鍚?JSON 鏍煎紡閿欒');
+        throw new Error(`${label} 格式错误`);
     }
 }
 function escHtml(t) { if (!t) return ''; const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }

@@ -331,6 +331,28 @@
                 "CREATE_TIME": "CREATE_TIME",
                 "UPDATE_TIME": "UPDATE_TIME",
                 "IS_DELETE": "IS_DELETE"
+            },
+            "field_value_semantics": {
+                "IS_UPDATE_ON_TIME": {
+                    "closed_set": [
+                        "是",
+                        "否"
+                    ],
+                    "labels": {
+                        "是": "按时更新",
+                        "否": "未按时更新"
+                    },
+                    "aliases": {
+                        "按时更新": "是",
+                        "已按时更新": "是",
+                        "及时更新": "是",
+                        "未按时更新": "否",
+                        "无法按时更新": "否",
+                        "未及时更新": "否"
+                    },
+                    "confidence_threshold": 0.75,
+                    "unknown_policy": "ask"
+                }
             }
         },
         "DATA_CATALOG_FIELD": {

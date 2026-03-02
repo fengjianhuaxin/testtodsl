@@ -294,3 +294,49 @@ output/          # 每次问答产物
 1. 不要在仓库中保存真实 API Key/数据库密码，建议改为环境变量注入。
 2. `users.json` 当前为明文密码，仅适合 POC；生产环境应改为哈希存储 + 持久会话。
 3. `sql_metric_rules` 虽做了 SELECT 白名单限制，仍建议在数据库层做只读账号与最小权限控制。
+
+---
+
+## 值语义闭集（数据层，新增）
+
+当前流程新增第二段值归一：
+
+- Step 01 `intent_clarify`：只识别字段与意图，`conditions.value` 保留用户语义，不做数据库编码转换。
+- Step 05B `value_resolve`：执行字段值落地。
+  - 有闭集：把闭集候选交给模型做受约束选择。
+  - 无闭集：按原逻辑走模型自由判断（低置信度回退原值）。
+
+### 配置位置
+
+在映射配置（数据层）里，按实体-字段配置：`field_value_semantics`。
+
+示例：
+
+```json
+{
+  "field_value_semantics": {
+    "IS_UPDATE_ON_TIME": {
+      "closed_set": ["是", "否"],
+      "labels": {
+        "是": "按时更新",
+        "否": "未按时更新"
+      },
+      "aliases": {
+        "按时更新": "是",
+        "未按时更新": "否",
+        "无法按时更新": "否"
+      },
+      "confidence_threshold": 0.75,
+      "unknown_policy": "ask"
+    }
+  }
+}
+```
+
+说明：
+
+- `closed_set`：数据库真实值闭集。
+- `labels`：值解释（给模型理解语义）。
+- `aliases`：常见自然语言表达到闭集值的映射。
+- `confidence_threshold`：模型选择置信度阈值。
+- `unknown_policy`：未知值策略（当前支持配置，后续可按策略执行追问/拒绝）。

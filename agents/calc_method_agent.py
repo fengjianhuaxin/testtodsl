@@ -3,13 +3,14 @@ from agents.base_agent import BaseAgent
 
 
 class CalcMethodAgent(BaseAgent):
-    BOOLEAN_RATE_TRUE_VALUES = ["是", "1", "true", "TRUE", "Y", "y", "yes", "YES"]
+    BOOLEAN_RATE_TRUE_VALUES = ["\u662f", "1", "true", "TRUE", "Y", "y", "yes", "YES"]
 
-    def __init__(self):
+    def __init__(self, mapping_manager=None):
         super().__init__(
             "\u8ba1\u7b97\u65b9\u6cd5\u667a\u80fd\u4f53",
             "\u786e\u5b9a\u8ba1\u7b97\u89c4\u5219\uff08\u660e\u7ec6/\u8ba1\u6570/\u6c42\u548c/\u5e73\u5747\u7b49\uff09(C\u6b65\u9aa4)",
         )
+        self.mapping = mapping_manager
 
     def run(self, input_data: dict) -> dict:
         intent = input_data.get("clarified_intent", {})
@@ -44,6 +45,7 @@ class CalcMethodAgent(BaseAgent):
 
         if calc_type == "rate":
             enhanced = self._enhance_rate_params(
+                input_data=input_data,
                 calc_params=calc_params,
                 extracted_fields=extracted_fields,
                 output_fields=output_fields,
@@ -51,7 +53,7 @@ class CalcMethodAgent(BaseAgent):
             )
             if enhanced:
                 calc_params.update(enhanced)
-            self._log_rate_params(calc_params)
+            self._log_rate_params(calc_params, source=enhanced.get("rate_true_values_source", ""))
 
         if calc_type == "detail":
             inferred_type, inferred_reason = self._infer_calc_type(raw_question, output_fields)
@@ -127,7 +129,6 @@ class CalcMethodAgent(BaseAgent):
 
         return {
             "rate_field": target_field,
-            "rate_true_values": list(self.BOOLEAN_RATE_TRUE_VALUES),
             "metric_alias": "rate_value",
             "metric_label": "\u6bd4\u7387",
         }, f"\u95ee\u53e5\u5305\u542b\u201c\u7387\u201d\u5173\u952e\u8bcd\uff0c\u5e76\u8bc6\u522b\u5230\u6307\u6807\u5b57\u6bb5 {target_field}"
@@ -146,6 +147,7 @@ class CalcMethodAgent(BaseAgent):
 
     def _enhance_rate_params(
         self,
+        input_data: dict,
         calc_params: dict,
         extracted_fields: list,
         output_fields: list,
@@ -203,24 +205,120 @@ class CalcMethodAgent(BaseAgent):
         if not candidate:
             candidate = {"entity": default_entity, "field": rate_field, "label": "", "type": "string"}
 
-        has_true_values = bool(calc_params.get("rate_true_values"))
+        current_true_values = calc_params.get("rate_true_values", [])
+        has_true_values = isinstance(current_true_values, list) and len(current_true_values) > 0
+        if has_true_values:
+            result["rate_true_values_source"] = "model_specified"
+            return result
 
-        if not has_true_values and self._is_boolean_like_field(
+        source_ids = self._infer_source_ids(input_data)
+        semantic_true_values = self._pick_rate_true_values_from_semantics(
+            source_ids=source_ids,
+            entity=str(candidate.get("entity", "")).strip().upper() or default_entity,
+            field=rate_field,
+        )
+        if semantic_true_values:
+            result["rate_true_values"] = semantic_true_values
+            result["rate_true_values_source"] = "data_semantics_closed_set"
+            self.log(
+                f"rate true-values from data semantics: {candidate.get('entity', '')}.{rate_field} -> {semantic_true_values}"
+            )
+            return result
+
+        if self._is_boolean_like_field(
             rate_field,
             candidate.get("label", ""),
             candidate.get("type", "string"),
         ):
             result["rate_true_values"] = list(self.BOOLEAN_RATE_TRUE_VALUES)
+            result["rate_true_values_source"] = "boolean_fallback"
             self.log(
-                f"比率真值未明确指定: {candidate.get('entity', '')}.{rate_field} "
-                f"使用布尔兜底 {result['rate_true_values']}"
+                f"rate true-values fallback: {candidate.get('entity', '')}.{rate_field} -> {result['rate_true_values']}"
             )
 
         return result
 
-    def _log_rate_params(self, calc_params: dict):
+    def _infer_source_ids(self, input_data: dict) -> list:
+        dispatch = input_data.get("dispatch", {}) if isinstance(input_data, dict) else {}
+        data_sources = dispatch.get("data_sources", []) if isinstance(dispatch, dict) else []
+        source_ids = [str(item).strip() for item in data_sources if str(item).strip()]
+        if source_ids:
+            return source_ids
+
+        preferred = str(input_data.get("preferred_source", "")).strip() if isinstance(input_data, dict) else ""
+        if preferred:
+            return [preferred]
+
+        intent = input_data.get("clarified_intent", {}) if isinstance(input_data, dict) else {}
+        source_id = str(intent.get("data_source", "")).strip() if isinstance(intent, dict) else ""
+        if source_id and source_id != "all":
+            return [source_id]
+
+        available_sources = input_data.get("available_sources", {}) if isinstance(input_data, dict) else {}
+        if isinstance(available_sources, dict) and available_sources:
+            return [next(iter(available_sources.keys()))]
+        return []
+
+    def _pick_rate_true_values_from_semantics(self, source_ids: list, entity: str, field: str) -> list:
+        if not self.mapping or not source_ids or not entity or not field:
+            return []
+
+        semantics_list = []
+        for source_id in source_ids:
+            semantics = self.mapping.get_field_value_semantics(source_id, entity, field)
+            if isinstance(semantics, dict) and isinstance(semantics.get("closed_set"), list) and semantics.get("closed_set"):
+                semantics_list.append(semantics)
+
+        if not semantics_list:
+            return []
+
+        import json
+
+        baseline = json.dumps(semantics_list[0], ensure_ascii=False, sort_keys=True)
+        for item in semantics_list[1:]:
+            if json.dumps(item, ensure_ascii=False, sort_keys=True) != baseline:
+                self.log(f"rate field closed-set differs across sources, skip: {entity}.{field}")
+                return []
+
+        semantics = semantics_list[0]
+        closed_set = [str(v).strip() for v in semantics.get("closed_set", []) if str(v).strip()]
+        if not closed_set:
+            return []
+
+        positive_tokens = ("\u662f", "true", "yes", "y", "\u7ebf\u4e0a", "\u5728\u7ebf", "\u542f\u7528", "\u6709\u6548", "\u5df2")
+
+        for preferred in ("\u662f", "1", "Y", "y", "true", "TRUE", "yes", "YES"):
+            if preferred in closed_set:
+                return [preferred]
+
+        labels = semantics.get("labels", {})
+        if isinstance(labels, dict):
+            for value in closed_set:
+                label_text = str(labels.get(value, "")).strip().lower()
+                if label_text and any(token in label_text for token in positive_tokens):
+                    return [value]
+
+        aliases = semantics.get("aliases", {})
+        if isinstance(aliases, dict):
+            score = {}
+            for alias, mapped in aliases.items():
+                target = str(mapped).strip()
+                if target not in closed_set:
+                    continue
+                alias_text = str(alias).strip().lower()
+                if not alias_text:
+                    continue
+                if any(token in alias_text for token in positive_tokens):
+                    score[target] = score.get(target, 0) + 1
+            if score:
+                return [max(score.items(), key=lambda x: x[1])[0]]
+
+        return []
+
+    def _log_rate_params(self, calc_params: dict, source: str = ""):
         if not isinstance(calc_params, dict):
             return
+
         rate_field = str(calc_params.get("rate_field", "")).strip()
         true_values = calc_params.get("rate_true_values", [])
         if isinstance(true_values, str):
@@ -228,13 +326,16 @@ class CalcMethodAgent(BaseAgent):
         if not isinstance(true_values, list):
             true_values = []
 
-        source = "未设置"
-        if true_values:
+        resolved_source = str(source or "").strip()
+        if not resolved_source:
             if true_values == list(self.BOOLEAN_RATE_TRUE_VALUES):
-                source = "布尔兜底"
+                resolved_source = "boolean_fallback"
+            elif true_values:
+                resolved_source = "model_specified"
             else:
-                source = "模型指定"
-        self.log(f"比率参数明细: rate_field={rate_field or '-'}, true_values={true_values}, 来源={source}")
+                resolved_source = "unset"
+
+        self.log(f"比率参数明细: rate_field={rate_field or '-'}, true_values={true_values}, 来源={resolved_source}")
 
     def _infer_calc_type(self, question: str, output_fields: list) -> tuple[str, str]:
         text = str(question or "")

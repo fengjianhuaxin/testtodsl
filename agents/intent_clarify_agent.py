@@ -126,6 +126,10 @@ $knowledge_block
 3) “最低/最少/最小” => order_by=__metric__, order_dir=asc, limit=1。
 4) 如果是 sum/avg/max/min 且同时询问“各XX分别”，优先按维度字段分组，不要仅返回全局汇总。
 5) data_source 除非用户明确指定，否则一律为 all。"""
+        # Keep condition values as user semantics in step-1; defer DB value grounding to step-2.
+        default_system_template += (
+            "\n6) conditions.value must keep user semantic text and must not convert to database code values."
+        )
         system_prompt = self._render_prompt(
             key="intent_clarify_system",
             default_template=default_system_template,
@@ -345,11 +349,19 @@ $property_block
     @staticmethod
     def _question_requires_grouping(question: str) -> bool:
         text = str(question or "")
+
         grouping_hints = (
-            "各", "分别", "每个", "按", "哪个", "哪一个", "排行", "排名", "最高", "最低",
-            "top", "前", "区划", "地区", "地市", "区县", "城市",
+            "\u5404", "\u5206\u522b", "\u6bcf\u4e2a", "\u54ea\u4e2a", "\u54ea\u4e00\u4e2a", "\u6392\u884c", "\u6392\u540d", "\u6700\u9ad8", "\u6700\u4f4e",
+            "top", "\u524d", "\u533a\u5212", "\u5730\u533a", "\u5730\u5e02", "\u533a\u53bf", "\u57ce\u5e02",
+            "\u6309\u5730\u533a", "\u6309\u533a\u5212", "\u6309\u5730\u5e02", "\u6309\u90e8\u95e8", "\u6309\u5355\u4f4d", "\u6309\u7c7b\u522b", "\u6309\u7c7b\u578b",
         )
-        return any(token in text for token in grouping_hints)
+        if any(token in text for token in grouping_hints):
+            return True
+
+        if re.search(r"\u6309[^\uFF0C\u3002\uFF1B,.]{0,8}(\u5206\u7ec4|\u7edf\u8ba1|\u6c47\u603b|\u5206\u522b|\u5404|\u6392\u540d|\u6392\u884c)", text):
+            return True
+
+        return False
 
     @staticmethod
     def _question_requires_limit(question: str, calc_type: str = "", order_by: str = "") -> bool:
