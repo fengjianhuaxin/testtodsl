@@ -131,10 +131,12 @@ class DSLQueryAgent(BaseAgent):
         if not entities:
             return "-- ???? SQL???????"
 
+        join_type_map = self._build_join_type_map(query_plan)
         table_aliases = {}
         from_parts = []
         join_parts = []
         select_infos = []
+        pushed_to_on = set()
 
         for index, entity in enumerate(entities):
             entity_name = entity["name"]
@@ -149,15 +151,38 @@ class DSLQueryAgent(BaseAgent):
             prev_entity = entities[index - 1]["name"]
             prev_alias = table_aliases[prev_entity]
             join_on, join_meta = self._find_join_key(source_id, prev_entity, entity_name)
+            join_type = join_type_map.get((str(prev_entity).upper(), str(entity_name).upper()), "inner")
+            join_keyword = "LEFT JOIN" if join_type == "left" else "JOIN"
             if join_on:
-                join_parts.append(f"JOIN {table_name} {alias} ON {prev_alias}.{join_on[0]} = {alias}.{join_on[1]}")
+                on_parts = [f"{prev_alias}.{join_on[0]} = {alias}.{join_on[1]}"]
+                if join_type == "left":
+                    for cond_index, condition in enumerate(conditions):
+                        if cond_index in pushed_to_on:
+                            continue
+                        cond_entity = str(condition.get("entity", "")).strip().upper()
+                        if cond_entity != str(entity_name).upper():
+                            continue
+                        field = condition.get("field", "")
+                        op = condition.get("op", "=")
+                        value = condition.get("value", "")
+                        actual_field = self.mapping.ontology_field_to_actual(source_id, entity_name, field) or field
+                        sql_condition = self._build_where_condition(alias, actual_field, op, value)
+                        if sql_condition:
+                            on_parts.append(sql_condition)
+                            pushed_to_on.add(cond_index)
+                            self.log(
+                                f"[{source_id}] LEFT JOIN ON下沉条件: "
+                                f"{entity_name}.{field} {op} {value}"
+                            )
+                join_parts.append(f"{join_keyword} {table_name} {alias} ON {' AND '.join(on_parts)}")
                 if join_meta:
                     self.log(
                         f"[{source_id}] JOIN??: "
                         f"{prev_entity}.{join_meta['left_onto']}({join_meta['left_actual']}) = "
                         f"{entity_name}.{join_meta['right_onto']}({join_meta['right_actual']}) "
                         f"??={join_meta['source']}"
-                    )
+                        )
+                self.log(f"[{source_id}] JOIN类型: {prev_entity} -> {entity_name} = {join_type.upper()}")
             else:
                 self.log(f"[{source_id}] JOIN??: {prev_entity} -> {entity_name} ?????????????")
                 from_parts.append(f"{table_name} {alias}")
@@ -182,7 +207,9 @@ class DSLQueryAgent(BaseAgent):
         select_sql = self._build_select_sql(calc_type, calc_params, fields, select_infos)
 
         where_parts = []
-        for condition in conditions:
+        for cond_index, condition in enumerate(conditions):
+            if cond_index in pushed_to_on:
+                continue
             entity_name = condition.get("entity", "")
             field = condition.get("field", "")
             op = condition.get("op", "=")
@@ -318,6 +345,29 @@ class DSLQueryAgent(BaseAgent):
     def _format_alias(self, alias: str) -> str:
         normalized = self._normalize_output_alias(alias)
         return f"`{self._escape_identifier(normalized)}`"
+
+    def _build_join_type_map(self, query_plan: dict) -> dict:
+        result = {}
+        joins = query_plan.get("joins", []) if isinstance(query_plan, dict) else []
+        if not isinstance(joins, list):
+            return result
+        for item in joins:
+            if not isinstance(item, dict):
+                continue
+            left_entity = str(item.get("left_entity", "")).strip().upper()
+            right_entity = str(item.get("right_entity", "")).strip().upper()
+            if not left_entity or not right_entity:
+                continue
+            join_type = self._normalize_join_type(item.get("join_type", "inner"))
+            result[(left_entity, right_entity)] = join_type
+        return result
+
+    @staticmethod
+    def _normalize_join_type(value) -> str:
+        text = str(value or "").strip().lower()
+        if text in {"left", "left_join", "left join"}:
+            return "left"
+        return "inner"
 
     def _build_where_condition(self, alias: str, actual_field: str, op: str, value):
         column = f"{alias}.{actual_field}" if alias else str(actual_field)

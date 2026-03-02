@@ -72,7 +72,7 @@ class ComputeAgent(BaseAgent):
         if len(entities) == 1:
             entity_name = entities[0]["name"]
             return self._simple_query(source_id, entity_name, conditions, fields, calc_type, calc_params)
-        return self._join_query(source_id, entities, conditions, fields, calc_type, calc_params)
+        return self._join_query(source_id, query_plan, conditions, fields, calc_type, calc_params)
 
     def _resolve_calc_rule(self, calc_rule: dict, query_spec: dict | None) -> tuple[str, dict]:
         calc_type = str((calc_rule or {}).get("type", "detail")).strip().lower() or "detail"
@@ -215,7 +215,9 @@ class ComputeAgent(BaseAgent):
 
         return dataframe
 
-    def _join_query(self, source_id, entities, conditions, fields, calc_type, calc_params):
+    def _join_query(self, source_id, query_plan, conditions, fields, calc_type, calc_params):
+        entities = query_plan.get("entities", [])
+        join_type_map = self._build_join_type_map(query_plan)
         base_entity = entities[0]["name"]
         dataframe = self.store.load_table(source_id, base_entity)
 
@@ -228,11 +230,13 @@ class ComputeAgent(BaseAgent):
             if not join_key:
                 join_key = self._find_join_field(dataframe, join_df)
             if join_key:
+                join_type = join_type_map.get((str(previous_entity).upper(), str(entity_name).upper()), "inner")
+                how_type = "left" if join_type == "left" else "inner"
                 dataframe = dataframe.merge(
                     join_df,
                     left_on=join_key[0],
                     right_on=join_key[1],
-                    how="left",
+                    how=how_type,
                     suffixes=("", f"_{entity_name}"),
                 )
 
@@ -350,6 +354,28 @@ class ComputeAgent(BaseAgent):
             result = dataframe.groupby(group_by)[rate_field].apply(_series_rate).reset_index(name=metric_alias)
             return result
         return pd.DataFrame([{metric_alias: _series_rate(dataframe[rate_field])}])
+
+    @staticmethod
+    def _normalize_join_type(value) -> str:
+        text = str(value or "").strip().lower()
+        if text in {"left", "left_join", "left join"}:
+            return "left"
+        return "inner"
+
+    def _build_join_type_map(self, query_plan: dict) -> dict:
+        result = {}
+        joins = query_plan.get("joins", []) if isinstance(query_plan, dict) else []
+        if not isinstance(joins, list):
+            return result
+        for item in joins:
+            if not isinstance(item, dict):
+                continue
+            left_entity = str(item.get("left_entity", "")).strip().upper()
+            right_entity = str(item.get("right_entity", "")).strip().upper()
+            if not left_entity or not right_entity:
+                continue
+            result[(left_entity, right_entity)] = self._normalize_join_type(item.get("join_type", "inner"))
+        return result
 
     @staticmethod
     def _find_join_field(df1, df2):
