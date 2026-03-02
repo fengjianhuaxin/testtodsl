@@ -115,14 +115,32 @@ class CalcMethodAgent(BaseAgent):
 
         target_field = None
         target_entity = default_entity
+        primary_candidates = []
         for item in candidates:
             field_name = str(item.get("field", "")).strip()
             label = str(item.get("label", "")).strip()
             field_type = str(item.get("type", "")).strip().lower()
+            if field_name:
+                primary_candidates.append((field_name, str(item.get("entity", "")).strip().upper() or default_entity, label))
             if self._is_boolean_like_field(field_name, label, field_type):
                 target_field = field_name
                 target_entity = str(item.get("entity", "")).strip().upper() or default_entity
                 break
+
+        if not target_field:
+            # For enum-like rate fields (e.g. OPEN_TYPE), try semantic keyword match first.
+            text_l = text.lower()
+            enum_keywords = ("开放", "在线", "上线", "启用", "完成", "通过", "有效", "正常")
+            for field_name, entity_name, label in primary_candidates:
+                haystack = f"{field_name} {label}".lower()
+                if any(token in text for token in enum_keywords) and any(token in haystack for token in enum_keywords):
+                    target_field = field_name
+                    target_entity = entity_name
+                    break
+
+        if not target_field and primary_candidates:
+            target_field = primary_candidates[0][0]
+            target_entity = primary_candidates[0][1]
 
         if not target_field:
             return None, "\u7387\u7c7b\u95ee\u53e5\u4f46\u672a\u80fd\u8bc6\u522b\u76ee\u6807\u5b57\u6bb5"
@@ -284,6 +302,18 @@ class CalcMethodAgent(BaseAgent):
         closed_set = [str(v).strip() for v in semantics.get("closed_set", []) if str(v).strip()]
         if not closed_set:
             return []
+
+        explicit_rate_values = semantics.get("rate_true_values", [])
+        if isinstance(explicit_rate_values, str):
+            explicit_rate_values = [part.strip() for part in explicit_rate_values.split(",") if part.strip()]
+        if isinstance(explicit_rate_values, list) and explicit_rate_values:
+            normalized = []
+            for item in explicit_rate_values:
+                text = str(item).strip()
+                if text and text in closed_set and text not in normalized:
+                    normalized.append(text)
+            if normalized:
+                return normalized
 
         positive_tokens = ("\u662f", "true", "yes", "y", "\u7ebf\u4e0a", "\u5728\u7ebf", "\u542f\u7528", "\u6709\u6548", "\u5df2")
 

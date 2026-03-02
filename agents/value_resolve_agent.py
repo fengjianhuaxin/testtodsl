@@ -9,6 +9,7 @@ class ValueResolveAgent(BaseAgent):
 
     MODEL_FALLBACK_THRESHOLD = 0.6
     TEXT_OPS = {"=", "!=", "contains", "in"}
+    STRICT_ALIAS_FIELDS = {"AREACODE", "AREA_CODE", "PROVINCE", "CITY", "COUNTY", "REGION"}
 
     def __init__(self, llm_client, mapping_manager, prompt_manager=None):
         super().__init__("值归一智能体", "第二段字段值归一：闭集选择或模型判断")
@@ -106,8 +107,8 @@ class ValueResolveAgent(BaseAgent):
             }
 
         semantics = self._pick_semantics(source_ids, entity, field)
-        if semantics and semantics.get("closed_set"):
-            resolved_value, meta = self._resolve_with_closed_set(
+        if semantics:
+            resolved_value, meta = self._resolve_with_semantics(
                 question=question,
                 entity=entity,
                 field=field,
@@ -155,7 +156,11 @@ class ValueResolveAgent(BaseAgent):
         found = []
         for source_id in source_ids:
             semantics = self.mapping.get_field_value_semantics(source_id, entity, field)
-            if isinstance(semantics, dict) and semantics.get("closed_set"):
+            if not isinstance(semantics, dict):
+                continue
+            has_closed_set = bool(semantics.get("closed_set"))
+            has_aliases = isinstance(semantics.get("aliases", {}), dict) and bool(semantics.get("aliases", {}))
+            if has_closed_set or has_aliases:
                 found.append(semantics)
 
         if not found:
@@ -167,9 +172,64 @@ class ValueResolveAgent(BaseAgent):
         baseline = json.dumps(found[0], ensure_ascii=False, sort_keys=True)
         for item in found[1:]:
             if json.dumps(item, ensure_ascii=False, sort_keys=True) != baseline:
-                self.log(f"检测到多数据源值语义不一致，跳过闭集约束: {entity}.{field}")
+                self.log(f"检测到多数据源值语义不一致，跳过语义约束: {entity}.{field}")
                 return None
         return found[0]
+
+    def _resolve_with_semantics(self, question: str, entity: str, field: str, op: str, value, semantics: dict) -> tuple[object, dict]:
+        if op == "in" and isinstance(value, list):
+            items = []
+            changed = False
+            min_conf = 1.0
+            dominant_strategy = ""
+            dominant_source = ""
+            for one in value:
+                resolved_one, meta = self._resolve_scalar_with_semantics(question, entity, field, one, semantics)
+                items.append(resolved_one)
+                changed = changed or bool(meta.get("changed"))
+                min_conf = min(min_conf, float(meta.get("confidence", 0.0)))
+                if not dominant_strategy:
+                    dominant_strategy = str(meta.get("strategy", "")).strip()
+                    dominant_source = str(meta.get("source", "")).strip()
+            unique = []
+            for item in items:
+                if item not in unique:
+                    unique.append(item)
+            return unique, {
+                "strategy": dominant_strategy or "semantics",
+                "source": dominant_source or "mixed",
+                "confidence": min_conf if items else 0.0,
+                "changed": changed,
+            }
+        return self._resolve_scalar_with_semantics(question, entity, field, value, semantics)
+
+    def _resolve_scalar_with_semantics(self, question: str, entity: str, field: str, value, semantics: dict) -> tuple[object, dict]:
+        aliases = semantics.get("aliases", {})
+        closed_set = semantics.get("closed_set", [])
+
+        raw_text = str(value).strip() if not isinstance(value, str) else value.strip()
+        alias_hit = self._lookup_alias(raw_text, aliases)
+        if alias_hit:
+            if not closed_set or alias_hit in closed_set:
+                return alias_hit, {
+                    "strategy": "strict_dict",
+                    "source": "alias",
+                    "confidence": 1.0,
+                    "changed": alias_hit != value,
+                }
+
+        if closed_set:
+            return self._resolve_scalar_with_closed_set(question, entity, field, value, semantics)
+
+        if self._is_strict_alias_field(field):
+            return value, {
+                "strategy": "strict_dict",
+                "source": "alias_miss",
+                "confidence": 0.0,
+                "changed": False,
+            }
+
+        return self._resolve_without_closed_set(question, entity, field, "=", value)
 
     def _resolve_with_closed_set(self, question: str, entity: str, field: str, op: str, value, semantics: dict) -> tuple[object, dict]:
         if op == "in" and isinstance(value, list):
@@ -303,6 +363,13 @@ class ValueResolveAgent(BaseAgent):
             "confidence": confidence,
             "changed": False,
         }
+
+    @classmethod
+    def _is_strict_alias_field(cls, field: str) -> bool:
+        field_upper = str(field or "").strip().upper()
+        if field_upper in cls.STRICT_ALIAS_FIELDS:
+            return True
+        return any(token in field_upper for token in ("AREA", "PROVINCE", "CITY", "COUNTY", "REGION"))
 
     @staticmethod
     def _lookup_alias(raw_value: str, aliases: dict) -> str:

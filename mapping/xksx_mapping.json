@@ -352,6 +352,39 @@
                     },
                     "confidence_threshold": 0.75,
                     "unknown_policy": "ask"
+                },
+                "OPEN_TYPE": {
+                    "closed_set": [
+                        "无条件开放",
+                        "有条件开放",
+                        "不开放"
+                    ],
+                    "labels": {
+                        "无条件开放": "完全开放",
+                        "有条件开放": "限制条件后可开放",
+                        "不开放": "不开放"
+                    },
+                    "aliases": {
+                        "无条件开放": "无条件开放",
+                        "有条件开放": "有条件开放",
+                        "不开放": "不开放"
+                    },
+                    "rate_true_values": [
+                        "无条件开放",
+                        "有条件开放"
+                    ],
+                    "confidence_threshold": 0.75,
+                    "unknown_policy": "ask"
+                },
+                "AREACODE": {
+                    "aliases": {
+                        "江苏省": "320000",
+                        "江苏": "320000",
+                        "32": "320000",
+                        "320000": "320000"
+                    },
+                    "confidence_threshold": 1.0,
+                    "unknown_policy": "ask"
                 }
             }
         },

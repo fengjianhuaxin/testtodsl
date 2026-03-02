@@ -171,6 +171,20 @@ class MappingManager:
                     continue
                 aliases[alias_text] = target_text
 
+        rate_true_values_raw = payload.get("rate_true_values", [])
+        if isinstance(rate_true_values_raw, str):
+            rate_true_values_raw = [item.strip() for item in rate_true_values_raw.split(",") if item.strip()]
+        if not isinstance(rate_true_values_raw, list):
+            rate_true_values_raw = []
+        rate_true_values = []
+        seen_true = set()
+        for item in rate_true_values_raw:
+            text = str(item).strip()
+            if not text or text in seen_true:
+                continue
+            seen_true.add(text)
+            rate_true_values.append(text)
+
         threshold = payload.get("confidence_threshold", 0.65)
         try:
             threshold = float(threshold)
@@ -186,6 +200,7 @@ class MappingManager:
             "closed_set": closed_set,
             "labels": labels,
             "aliases": aliases,
+            "rate_true_values": rate_true_values,
             "confidence_threshold": threshold,
             "unknown_policy": unknown_policy,
         }
