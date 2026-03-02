@@ -4,6 +4,7 @@ from agents.base_agent import BaseAgent
 
 class CalcMethodAgent(BaseAgent):
     BOOLEAN_RATE_TRUE_VALUES = ["\u662f", "1", "true", "TRUE", "Y", "y", "yes", "YES"]
+    BOOLEAN_RATE_FALSE_VALUES = ["\u5426", "0", "false", "FALSE", "N", "n", "no", "NO"]
 
     def __init__(self, mapping_manager=None):
         super().__init__(
@@ -50,6 +51,7 @@ class CalcMethodAgent(BaseAgent):
                 extracted_fields=extracted_fields,
                 output_fields=output_fields,
                 target_entities=entities,
+                question=raw_question,
             )
             if enhanced:
                 calc_params.update(enhanced)
@@ -170,6 +172,7 @@ class CalcMethodAgent(BaseAgent):
         extracted_fields: list,
         output_fields: list,
         target_entities: list,
+        question: str = "",
     ) -> dict:
         if not isinstance(calc_params, dict):
             return {}
@@ -230,16 +233,44 @@ class CalcMethodAgent(BaseAgent):
             return result
 
         source_ids = self._infer_source_ids(input_data)
+        semantics = self._get_consistent_rate_semantics(
+            source_ids=source_ids,
+            entity=str(candidate.get("entity", "")).strip().upper() or default_entity,
+            field=rate_field,
+        )
         semantic_true_values = self._pick_rate_true_values_from_semantics(
             source_ids=source_ids,
             entity=str(candidate.get("entity", "")).strip().upper() or default_entity,
             field=rate_field,
         )
         if semantic_true_values:
-            result["rate_true_values"] = semantic_true_values
-            result["rate_true_values_source"] = "data_semantics_closed_set"
+            final_values = semantic_true_values
+            source = "data_semantics_closed_set"
+            polarity_mode = self._detect_rate_polarity(question)
+            if polarity_mode == "negative" and isinstance(semantics, dict):
+                closed_set = [
+                    str(value).strip()
+                    for value in semantics.get("closed_set", [])
+                    if str(value).strip()
+                ]
+                complement = [value for value in closed_set if value not in semantic_true_values]
+                if complement:
+                    final_values = complement
+                    source = "data_semantics_closed_set_complement"
+                    self.log(
+                        f"rate polarity=negative, use closed-set complement: "
+                        f"{candidate.get('entity', '')}.{rate_field} -> {final_values}"
+                    )
+                else:
+                    self.log(
+                        f"rate polarity=negative but complement empty, keep positive set: "
+                        f"{candidate.get('entity', '')}.{rate_field} -> {semantic_true_values}"
+                    )
+
+            result["rate_true_values"] = final_values
+            result["rate_true_values_source"] = source
             self.log(
-                f"rate true-values from data semantics: {candidate.get('entity', '')}.{rate_field} -> {semantic_true_values}"
+                f"rate true-values from data semantics: {candidate.get('entity', '')}.{rate_field} -> {final_values}"
             )
             return result
 
@@ -248,8 +279,13 @@ class CalcMethodAgent(BaseAgent):
             candidate.get("label", ""),
             candidate.get("type", "string"),
         ):
-            result["rate_true_values"] = list(self.BOOLEAN_RATE_TRUE_VALUES)
-            result["rate_true_values_source"] = "boolean_fallback"
+            polarity_mode = self._detect_rate_polarity(question)
+            if polarity_mode == "negative":
+                result["rate_true_values"] = list(self.BOOLEAN_RATE_FALSE_VALUES)
+                result["rate_true_values_source"] = "boolean_negative_fallback"
+            else:
+                result["rate_true_values"] = list(self.BOOLEAN_RATE_TRUE_VALUES)
+                result["rate_true_values_source"] = "boolean_fallback"
             self.log(
                 f"rate true-values fallback: {candidate.get('entity', '')}.{rate_field} -> {result['rate_true_values']}"
             )
@@ -277,9 +313,9 @@ class CalcMethodAgent(BaseAgent):
             return [next(iter(available_sources.keys()))]
         return []
 
-    def _pick_rate_true_values_from_semantics(self, source_ids: list, entity: str, field: str) -> list:
+    def _get_consistent_rate_semantics(self, source_ids: list, entity: str, field: str) -> dict | None:
         if not self.mapping or not source_ids or not entity or not field:
-            return []
+            return None
 
         semantics_list = []
         for source_id in source_ids:
@@ -288,7 +324,7 @@ class CalcMethodAgent(BaseAgent):
                 semantics_list.append(semantics)
 
         if not semantics_list:
-            return []
+            return None
 
         import json
 
@@ -296,9 +332,14 @@ class CalcMethodAgent(BaseAgent):
         for item in semantics_list[1:]:
             if json.dumps(item, ensure_ascii=False, sort_keys=True) != baseline:
                 self.log(f"rate field closed-set differs across sources, skip: {entity}.{field}")
-                return []
+                return None
 
-        semantics = semantics_list[0]
+        return semantics_list[0]
+
+    def _pick_rate_true_values_from_semantics(self, source_ids: list, entity: str, field: str) -> list:
+        semantics = self._get_consistent_rate_semantics(source_ids, entity, field)
+        if not isinstance(semantics, dict):
+            return []
         closed_set = [str(v).strip() for v in semantics.get("closed_set", []) if str(v).strip()]
         if not closed_set:
             return []
@@ -344,6 +385,40 @@ class CalcMethodAgent(BaseAgent):
                 return [max(score.items(), key=lambda x: x[1])[0]]
 
         return []
+
+    @staticmethod
+    def _detect_rate_polarity(question: str) -> str:
+        text = str(question or "")
+        if not text:
+            return "positive"
+
+        negative_phrases = (
+            "\u4e0d\u5171\u4eab", "\u672a\u5171\u4eab",
+            "\u4e0d\u5f00\u653e", "\u672a\u5f00\u653e",
+            "\u4e0d\u66f4\u65b0", "\u672a\u66f4\u65b0",
+            "\u4e0d\u6309\u65f6", "\u672a\u6309\u65f6",
+            "\u4e0d\u5728\u7ebf", "\u79bb\u7ebf",
+            "\u4e0d\u542f\u7528", "\u672a\u542f\u7528",
+            "\u4e0d\u901a\u8fc7", "\u672a\u901a\u8fc7",
+            "\u4e0d\u5408\u683c", "\u4e0d\u6b63\u5e38", "\u65e0\u6548", "\u5931\u8d25", "\u5f02\u5e38",
+        )
+        if any(token in text for token in negative_phrases):
+            return "negative"
+
+        negative_prefixes = ("\u4e0d", "\u672a", "\u65e0", "\u975e", "\u5426")
+        polarity_targets = (
+            "\u5171\u4eab", "\u5f00\u653e", "\u66f4\u65b0", "\u6309\u65f6",
+            "\u5728\u7ebf", "\u542f\u7528", "\u901a\u8fc7", "\u5b8c\u6210",
+            "\u53ef\u7528", "\u6b63\u5e38", "\u5408\u89c4", "\u8fbe\u6807",
+        )
+        for idx, ch in enumerate(text):
+            if ch not in negative_prefixes:
+                continue
+            window = text[idx + 1: idx + 6]
+            if any(token in window for token in polarity_targets):
+                return "negative"
+
+        return "positive"
 
     def _log_rate_params(self, calc_params: dict, source: str = ""):
         if not isinstance(calc_params, dict):

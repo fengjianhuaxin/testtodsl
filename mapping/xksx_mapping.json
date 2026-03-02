@@ -266,124 +266,147 @@
             "table_name": "DATA_CATALOG",
             "file_name": "DATA_CATALOG.xlsx",
             "field_mappings": {
+                "API_INVOKE_COUNT": "API_INVOKE_COUNT",
+                "API_RESOURCE_COUNT": "API_RESOURCE_COUNT",
+                "AREACODE": "AREACODE",
+                "AUTH_APPLY_DATA_COUNT": "AUTH_APPLY_DATA_COUNT",
+                "AUTH_APPLY_DEPT_COUNT": "AUTH_APPLY_DEPT_COUNT",
+                "AUTH_APPLY_PASS_COUNT": "AUTH_APPLY_PASS_COUNT",
+                "CATALOG_INDUSTRY_CLASS": "CATALOG_INDUSTRY_CLASS",
+                "CATALOG_SECURITY_LEVEL": "CATALOG_SECURITY_LEVEL",
+                "CATALOG_TOPIC_CLASS": "CATALOG_TOPIC_CLASS",
+                "CREATE_TIME": "CREATE_TIME",
+                "DATA_AREA_RANGE": "DATA_AREA_RANGE",
                 "DATA_CATALOG_CODE": "DATA_CATALOG_CODE",
                 "DATA_CATALOG_NAME": "DATA_CATALOG_NAME",
-                "DEPT_NAME": "DEPT_NAME",
-                "DEPT_CODE": "DEPT_CODE",
-                "INFO_SYSTEM_NAME": "INFO_SYSTEM_NAME",
-                "INFO_SYSTEM_CODE": "INFO_SYSTEM_CODE",
-                "IS_E_LICENSE": "IS_E_LICENSE",
-                "TASK_CATALOG_NAME": "TASK_CATALOG_NAME",
-                "TASK_CATALOG_CODE": "TASK_CATALOG_CODE",
-                "TASK_NAME": "TASK_NAME",
-                "TASK_CODE": "TASK_CODE",
-                "YW_NAME": "YW_NAME",
-                "YW_CODE": "YW_CODE",
-                "IS_HAS_RESOURCE": "IS_HAS_RESOURCE",
-                "SHARE_TYPE": "SHARE_TYPE",
-                "SHARE_CONDITION": "SHARE_CONDITION",
-                "OPEN_TYPE": "OPEN_TYPE",
-                "OPEN_CONDITION": "OPEN_CONDITION",
-                "CATALOG_INDUSTRY_CLASS": "CATALOG_INDUSTRY_CLASS",
-                "CATALOG_TOPIC_CLASS": "CATALOG_TOPIC_CLASS",
-                "CATALOG_SECURITY_LEVEL": "CATALOG_SECURITY_LEVEL",
-                "DATA_SECURITY_LEVEL": "DATA_SECURITY_LEVEL",
-                "UPDATE_CYCLE": "UPDATE_CYCLE",
-                "LAST_UPDATE_TIME": "LAST_UPDATE_TIME",
-                "RELEASE_TIME": "RELEASE_TIME",
-                "IS_COLLECT": "IS_COLLECT",
-                "IS_HIGH_VALUE": "IS_HIGH_VALUE",
-                "IS_AUTHORIZED_OPERATION": "IS_AUTHORIZED_OPERATION",
-                "IS_REGISTER": "IS_REGISTER",
-                "DATA_TYPE": "DATA_TYPE",
                 "DATA_COUNT": "DATA_COUNT",
-                "RESOURCE_COUNT": "RESOURCE_COUNT",
-                "TABLE_RESOURCE_COUNT": "TABLE_RESOURCE_COUNT",
-                "FILE_RESOURCE_COUNT": "FILE_RESOURCE_COUNT",
-                "API_RESOURCE_COUNT": "API_RESOURCE_COUNT",
-                "API_INVOKE_COUNT": "API_INVOKE_COUNT",
-                "DATA_STORAGE": "DATA_STORAGE",
-                "PROCESSING_STAGE": "PROCESSING_STAGE",
-                "DATA_AREA_RANGE": "DATA_AREA_RANGE",
-                "DATA_TIME_RANGE": "DATA_TIME_RANGE",
-                "DATA_LEVEL": "DATA_LEVEL",
                 "DATA_HEAT_RANGE": "DATA_HEAT_RANGE",
-                "SHARE_APPLY_COUNT": "SHARE_APPLY_COUNT",
-                "SHARE_APPLY_PASS_COUNT": "SHARE_APPLY_PASS_COUNT",
-                "OPEN_APPLY_COUNT": "OPEN_APPLY_COUNT",
-                "OPEN_APPLY_PASS_COUNT": "OPEN_APPLY_PASS_COUNT",
-                "AUTH_APPLY_PASS_COUNT": "AUTH_APPLY_PASS_COUNT",
-                "SHARE_APPLY_DATA_COUNT": "SHARE_APPLY_DATA_COUNT",
-                "OPEN_APPLY_DATA_COUNT": "OPEN_APPLY_DATA_COUNT",
-                "AUTH_APPLY_DATA_COUNT": "AUTH_APPLY_DATA_COUNT",
-                "SHARE_APPLY_DEPT_COUNT": "SHARE_APPLY_DEPT_COUNT",
-                "OPEN_APPLY_DEPT_COUNT": "OPEN_APPLY_DEPT_COUNT",
-                "AUTH_APPLY_DEPT_COUNT": "AUTH_APPLY_DEPT_COUNT",
+                "DATA_LEVEL": "DATA_LEVEL",
+                "DATA_SECURITY_LEVEL": "DATA_SECURITY_LEVEL",
+                "DATA_STORAGE": "DATA_STORAGE",
+                "DATA_TIME_RANGE": "DATA_TIME_RANGE",
+                "DATA_TYPE": "DATA_TYPE",
+                "DEPT_CODE": "DEPT_CODE",
+                "DEPT_NAME": "DEPT_NAME",
+                "FILE_RESOURCE_COUNT": "FILE_RESOURCE_COUNT",
+                "INFO_SYSTEM_CODE": "INFO_SYSTEM_CODE",
+                "INFO_SYSTEM_NAME": "INFO_SYSTEM_NAME",
+                "IS_AUTHORIZED_OPERATION": "IS_AUTHORIZED_OPERATION",
+                "IS_COLLECT": "IS_COLLECT",
+                "IS_DELETE": "IS_DELETE",
+                "IS_E_LICENSE": "IS_E_LICENSE",
+                "IS_HAS_RESOURCE": "IS_HAS_RESOURCE",
+                "IS_HIGH_VALUE": "IS_HIGH_VALUE",
+                "IS_REGISTER": "IS_REGISTER",
                 "IS_UPDATE_ON_TIME": "IS_UPDATE_ON_TIME",
-                "TOP_DEPT_CODE": "TOP_DEPT_CODE",
-                "TOP_DEPT_NAME": "TOP_DEPT_NAME",
-                "REPORTCLIENT": "REPORTCLIENT",
-                "RELATED_SYSTEM_ANOMALY_STATUS": "RELATED_SYSTEM_ANOMALY_STATUS",
+                "LAST_UPDATE_TIME": "LAST_UPDATE_TIME",
+                "OPEN_APPLY_COUNT": "OPEN_APPLY_COUNT",
+                "OPEN_APPLY_DATA_COUNT": "OPEN_APPLY_DATA_COUNT",
+                "OPEN_APPLY_DEPT_COUNT": "OPEN_APPLY_DEPT_COUNT",
+                "OPEN_APPLY_PASS_COUNT": "OPEN_APPLY_PASS_COUNT",
+                "OPEN_CONDITION": "OPEN_CONDITION",
+                "OPEN_TYPE": "OPEN_TYPE",
+                "PROCESSING_STAGE": "PROCESSING_STAGE",
                 "RELATED_OU_ANOMALY_STATUS": "RELATED_OU_ANOMALY_STATUS",
-                "AREACODE": "AREACODE",
+                "RELATED_SYSTEM_ANOMALY_STATUS": "RELATED_SYSTEM_ANOMALY_STATUS",
+                "RELEASE_TIME": "RELEASE_TIME",
+                "REPORTCLIENT": "REPORTCLIENT",
+                "RESOURCE_COUNT": "RESOURCE_COUNT",
                 "ROWGUID": "ROWGUID",
                 "ROW_ID": "ROW_ID",
-                "CREATE_TIME": "CREATE_TIME",
+                "SHARE_APPLY_COUNT": "SHARE_APPLY_COUNT",
+                "SHARE_APPLY_DATA_COUNT": "SHARE_APPLY_DATA_COUNT",
+                "SHARE_APPLY_DEPT_COUNT": "SHARE_APPLY_DEPT_COUNT",
+                "SHARE_APPLY_PASS_COUNT": "SHARE_APPLY_PASS_COUNT",
+                "SHARE_CONDITION": "SHARE_CONDITION",
+                "SHARE_TYPE": "SHARE_TYPE",
+                "TABLE_RESOURCE_COUNT": "TABLE_RESOURCE_COUNT",
+                "TASK_CATALOG_CODE": "TASK_CATALOG_CODE",
+                "TASK_CATALOG_NAME": "TASK_CATALOG_NAME",
+                "TASK_CODE": "TASK_CODE",
+                "TASK_NAME": "TASK_NAME",
+                "TOP_DEPT_CODE": "TOP_DEPT_CODE",
+                "TOP_DEPT_NAME": "TOP_DEPT_NAME",
+                "UPDATE_CYCLE": "UPDATE_CYCLE",
                 "UPDATE_TIME": "UPDATE_TIME",
-                "IS_DELETE": "IS_DELETE"
+                "YW_CODE": "YW_CODE",
+                "YW_NAME": "YW_NAME"
             },
             "field_value_semantics": {
+                "AREACODE": {
+                    "aliases": {
+                        "32": "320000",
+                        "320000": "320000",
+                        "江苏": "320000",
+                        "江苏省": "320000"
+                    },
+                    "confidence_threshold": 1,
+                    "unknown_policy": "ask"
+                },
                 "IS_UPDATE_ON_TIME": {
+                    "aliases": {
+                        "及时更新": "是",
+                        "已按时更新": "是",
+                        "按时更新": "是",
+                        "无法按时更新": "否",
+                        "未及时更新": "否",
+                        "未按时更新": "否"
+                    },
                     "closed_set": [
                         "是",
                         "否"
                     ],
-                    "labels": {
-                        "是": "按时更新",
-                        "否": "未按时更新"
-                    },
-                    "aliases": {
-                        "按时更新": "是",
-                        "已按时更新": "是",
-                        "及时更新": "是",
-                        "未按时更新": "否",
-                        "无法按时更新": "否",
-                        "未及时更新": "否"
-                    },
                     "confidence_threshold": 0.75,
+                    "labels": {
+                        "否": "未按时更新",
+                        "是": "按时更新"
+                    },
                     "unknown_policy": "ask"
                 },
                 "OPEN_TYPE": {
+                    "aliases": {
+                        "不开放": "不开放",
+                        "无条件开放": "无条件开放",
+                        "有条件开放": "有条件开放"
+                    },
                     "closed_set": [
                         "无条件开放",
                         "有条件开放",
                         "不开放"
                     ],
+                    "confidence_threshold": 0.75,
                     "labels": {
+                        "不开放": "不开放",
                         "无条件开放": "完全开放",
-                        "有条件开放": "限制条件后可开放",
-                        "不开放": "不开放"
-                    },
-                    "aliases": {
-                        "无条件开放": "无条件开放",
-                        "有条件开放": "有条件开放",
-                        "不开放": "不开放"
+                        "有条件开放": "限制条件后可开放"
                     },
                     "rate_true_values": [
                         "无条件开放",
                         "有条件开放"
                     ],
-                    "confidence_threshold": 0.75,
                     "unknown_policy": "ask"
                 },
-                "AREACODE": {
+                "SHARE_TYPE": {
                     "aliases": {
-                        "江苏省": "320000",
-                        "江苏": "320000",
-                        "32": "320000",
-                        "320000": "320000"
+                        "不共享": "不共享",
+                        "无条件共享": "无条件共享",
+                        "有条件共享": "有条件共享"
                     },
-                    "confidence_threshold": 1.0,
+                    "closed_set": [
+                        "无条件共享",
+                        "有条件共享",
+                        "不共享"
+                    ],
+                    "confidence_threshold": 0.75,
+                    "labels": {
+                        "不共享": "不共享",
+                        "无条件共享": "无条件共享",
+                        "有条件共享": "有条件共享"
+                    },
+                    "rate_true_values": [
+                        "无条件共享",
+                        "有条件共享"
+                    ],
                     "unknown_policy": "ask"
                 }
             }

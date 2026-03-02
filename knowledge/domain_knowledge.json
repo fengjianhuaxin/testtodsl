@@ -1,16 +1,6 @@
 {
   "term_knowledge": [
     {
-      "id": "term_business_system",
-      "term": "业务系统",
-      "keywords": [
-        "业务系统",
-        "生产系统",
-        "业务应用"
-      ],
-      "content": "业务系统指承载具体业务流程的应用系统，统计口径通常按系统编码去重，不包含测试环境、临时脚本和一次性工具。"
-    },
-    {
       "id": "term_should_but_not_registered",
       "term": "应编未编",
       "keywords": [
@@ -35,7 +25,7 @@
       "keywords": [
         "业务系统"
       ],
-      "content": "业务系统是系统的一个类型"
+      "content": "业务系统是系统的一个系统类型"
     }
   ],
   "rewrite_rules": [

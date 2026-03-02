@@ -96,6 +96,22 @@ class MappingManager:
                 raw_semantics = value
                 break
         if not isinstance(raw_semantics, dict):
+            lowered_targets = {
+                str(key or "").strip().lower()
+                for key in candidate_keys
+                if str(key or "").strip()
+            }
+            if lowered_targets:
+                fallback_hits = []
+                for key, value in semantics_map.items():
+                    key_text = str(key or "").strip()
+                    if not key_text or not isinstance(value, dict):
+                        continue
+                    if key_text.lower() in lowered_targets:
+                        fallback_hits.append(value)
+                if fallback_hits:
+                    raw_semantics = fallback_hits[0]
+        if not isinstance(raw_semantics, dict):
             return None
 
         return self._normalize_field_value_semantics(raw_semantics)
