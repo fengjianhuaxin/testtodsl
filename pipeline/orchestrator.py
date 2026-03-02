@@ -38,7 +38,7 @@ class Orchestrator:
         self.mapping = MappingManager(config.MAPPING_DIR)
         self.data_store = create_data_store(self.mapping)
         self.llm = QwenClient()
-        self.splitter = QuestionSplitAgent()
+        self.splitter = QuestionSplitAgent(self.llm, self.prompts)
 
         self.run_id = time.strftime("%Y%m%d_%H%M%S")
         self.output_dir = os.path.join(config.OUTPUT_DIR, self.run_id)

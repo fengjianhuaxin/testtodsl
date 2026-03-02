@@ -409,14 +409,29 @@ class ValueResolveAgent(BaseAgent):
         system_prompt = self._render_prompt(
             key="value_resolve_closed_set_system",
             default_template=default_system,
-            context={},
+            context={
+                "question": question,
+                "entity": entity,
+                "field": field,
+                "raw_value": raw_value,
+                "options_text": options_text,
+            },
         )
-
-        user_message = (
-            f"问题: {question}\n"
-            f"字段: {entity}.{field}\n"
-            f"用户原值: {raw_value}\n"
-            f"候选值:\n{options_text}"
+        user_message = self._render_prompt(
+            key="value_resolve_closed_set_user",
+            default_template=(
+                "问题: $question\n"
+                "字段: $entity.$field\n"
+                "用户原值: $raw_value\n"
+                "候选值:\n$options_text"
+            ),
+            context={
+                "question": question,
+                "entity": entity,
+                "field": field,
+                "raw_value": raw_value,
+                "options_text": options_text,
+            },
         )
 
         try:
@@ -441,12 +456,26 @@ class ValueResolveAgent(BaseAgent):
         system_prompt = self._render_prompt(
             key="value_resolve_free_system",
             default_template=default_system,
-            context={},
+            context={
+                "question": question,
+                "entity": entity,
+                "field": field,
+                "raw_value": raw_value,
+            },
         )
-        user_message = (
-            f"问题: {question}\n"
-            f"字段: {entity}.{field}\n"
-            f"用户原值: {raw_value}"
+        user_message = self._render_prompt(
+            key="value_resolve_free_user",
+            default_template=(
+                "问题: $question\n"
+                "字段: $entity.$field\n"
+                "用户原值: $raw_value"
+            ),
+            context={
+                "question": question,
+                "entity": entity,
+                "field": field,
+                "raw_value": raw_value,
+            },
         )
 
         try:
