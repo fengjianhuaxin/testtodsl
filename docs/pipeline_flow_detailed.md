@@ -1,369 +1,206 @@
-﻿# 智能问数系统完整流程图（含筛选/过滤/兜底）
+﻿# 智能问数系统完整流程图（最新）
 
-本文基于当前代码实现整理，覆盖从自然语言到 SQL/执行结果/回答的完整链路。
+本文按当前代码实现整理，重点更新了三处：
+- Step00：问题拆解已改为 `LLM任务规划 + 规则校验兜底`。
+- JOIN：已支持 `INNER JOIN` 与 `LEFT JOIN`。
+- LEFT JOIN 细节：右表条件会下沉到 `ON`，避免被 `WHERE` 退化成 INNER。
 
-## 1. 总体编排流程（主调度）
+## 1. 主流程总览
 
 ```mermaid
 flowchart TD
     A[输入问题] --> B[全局同义词替换]
     B --> C[步骤00 问题拆解]
-    C --> D{是否拆成多个子问题}
+    C --> D{是否多任务}
 
-    D -- 否 --> E[单任务流程]
-    D -- 是 --> F[多任务循环
-每个子问题独立跑 01-12]
-    F --> G[汇总子任务结果]
+    D -- 否 --> E[单任务执行步骤01到12]
+    D -- 是 --> F[逐个子任务执行步骤01到12]
+    F --> G[合并子任务结果]
 
-    E --> H[步骤01 意图澄清]
-    H --> I[步骤02 知识验证]
-    I --> J[步骤03 调度]
-    J --> K{是否要求中止}
-    K -- 是 --> Z1[提前中止后续步骤]
-    K -- 否 --> L[步骤04 查询规划]
+    E --> H[保存中间产物]
+    G --> H
 
-    L --> M[步骤05 条件筛选]
-    M --> N[步骤05B 值归一]
-    N --> O[步骤06 字段提取]
-    O --> P[步骤07 计算方法]
-    P --> Q[步骤08 DSL与SQL生成]
-    Q --> R[步骤09 执行计算]
-    R --> S[步骤10 质检]
-    S --> T[步骤11 答案生成]
-    T --> U[步骤12 图表]
+    H --> I{是否有DSL结果}
+    I -- 是 --> J[保存dsl_query.json]
+    I -- 否 --> K[跳过DSL落盘]
 
-    Z1 --> V[保存 intermediates.json]
-    G --> V
-    U --> V
-
-    V --> W{是否有 DSL 结果}
-    W -- 是 --> X[保存 dsl结果文件]
-    W -- 否 --> Y[跳过]
-
-    X --> AA[保存结果文件]
-    Y --> AA
-    AA --> AB[保存模型调用轨迹]
-    AB --> AC[输出最终答案]
+    J --> L[保存result.json]
+    K --> L
+    L --> M[保存llm_traces.json]
+    M --> N[输出最终答案]
 ```
 
-## 2. 步骤01 意图澄清详细分支
+## 2. 步骤00 问题拆解（任务规划）
 
 ```mermaid
 flowchart TD
-    A1[输入问题] --> A2[构造本体描述 ontology_desc]
-    A2 --> A3[检索术语知识 top_k=3]
-    A3 --> A4[匹配 sql_metric_rules]
-    A4 --> A5{命中指标SQL规则?}
+    A0[输入原问题] --> A1{LLM可用}
 
-    A5 -- 是 --> B1[直接构造 clarified_intent
-calc_type=custom_sql]
-    B1 --> B2[提取 target_entities
-+ metric hints 解析]
-    B2 --> B3[返回 clarified_intent]
+    A1 -- 是 --> B1[加载question_split_system和question_split_user提示词]
+    B1 --> B2[调用LLM返回JSON计划]
+    B2 --> B3[标准化execution_mode和tasks]
+    B3 --> B4{计划是否合法}
+    B4 -- 否 --> C1[回退规则拆解]
+    B4 -- 是 --> B5{LLM判单任务但命中same_period_compare规则}
+    B5 -- 是 --> B6[规则覆盖为multi_sql]
+    B5 -- 否 --> B7[采用LLM结果]
 
-    A5 -- 否 --> C1[LLM 输出 JSON 意图]
-    C1 --> C2[_normalize_intent_result]
-    C2 --> C3[规范化 target_entities/conditions/output_fields]
-    C3 --> C4[calc_type 白名单校验
-不合法 -> detail]
-    C4 --> C5[normalize calc_params]
-    C5 --> C6{聚合类且应分组
-但未给 group_by?}
-    C6 -- 是 --> C7[从 output_fields 推导 group_by]
-    C6 -- 否 --> C8[保持原样]
-    C7 --> C9
-    C8 --> C9
-    C9{topn?} -- 是 --> C10[补默认 order_by=__metric__
-order_dir=desc limit=10]
-    C9 -- 否 --> C11[保持]
-    C10 --> C12
-    C11 --> C12
-    C12{limit 与问句意图不匹配?} -- 是 --> C13[移除 limit]
-    C12 -- 否 --> C14[保留 limit]
-    C13 --> C15
-    C14 --> C15
-    C15[group_by 字段强制补入 output_fields]
-    C15 --> C16[规范 output label]
-    C16 --> C17[data_source 合法性校验
-非法 -> all]
-    C17 --> C18[返回 clarified_intent]
+    A1 -- 否 --> C1
+
+    C1 --> C2[规则拆解 multi_question/comma/connector/same_period]
+    B6 --> D1[输出split_analysis]
+    B7 --> D1
+    C2 --> D1
 ```
 
-## 3. 步骤05 条件筛选（字段/操作符/区划过滤）
+## 3. 步骤01 意图澄清（结构化意图）
 
 ```mermaid
 flowchart TD
-    B0[clarified_intent.conditions] --> B1[逐条处理]
-    B1 --> B2[op 归一化
-= != > < >= <= contains in]
-    B2 --> B3{op==in?}
-    B3 -- 是 --> B4[in 值字符串转 list]
-    B3 -- 否 --> B5[保持 value]
-    B4 --> B6
-    B5 --> B6
+    E0[输入问题] --> E1[构造本体描述和领域知识上下文]
+    E1 --> E2{命中指标预置SQL规则}
 
-    B6{entity+field 可解析?}
-    B6 -- 是 --> B7[resolve_property_name
-别名->本体字段]
-    B7 --> B8{字段不存在?}
-    B8 -- 是 --> B9[suggest_property_name 相似纠错]
-    B9 --> B10{纠错成功?}
-    B10 -- 否 --> B11[丢弃该条件]
-    B10 -- 是 --> B12[使用建议字段]
-    B8 -- 否 --> B12
+    E2 -- 是 --> E3[构造custom_sql意图并补充metric hints]
+    E2 -- 否 --> E4[LLM输出意图JSON]
 
-    B12 --> B13[normalize_property_value
-按 ontology.value_aliases 映射]
-    B13 --> B14{区划字段 + contains + 单值?}
-    B14 -- 是 --> B15[contains 收敛为 =]
-    B14 -- 否 --> B16[保留原 op]
+    E3 --> E5[统一归一化 normalize_intent]
+    E4 --> E5
 
-    B11 --> B17[下一条]
-    B15 --> B17
-    B16 --> B17
-    B17 --> B18[输出 conditions]
+    E5 --> E6[校验calc_type和op白名单]
+    E6 --> E7[规范calc_params group_by order_by limit]
+    E7 --> E8[必要时推断group_by并补入output_fields]
+    E8 --> E9[data_source合法性校验]
+    E9 --> E10[输出clarified_intent]
 ```
 
-## 4. 步骤05B 值归一（数据层语义 + 模型兜底）
+## 4. 步骤04 查询规划（实体图与JOIN策略）
 
 ```mermaid
 flowchart TD
-    C0[输入条件列表] --> C1[逐条处理]
-    C1 --> C2{字段与操作是否可处理}
-    C2 -- 否 --> C3[跳过并保留原值]
-    C2 -- 是 --> C4[按数据源读取字段语义]
+    F0[读取target_entities] --> F1[构建entities和relations子图]
+    F1 --> F2{实体数是否大于1}
 
-    C4 --> C5{多数据源语义是否冲突}
-    C5 -- 是 --> C6[放弃语义约束 走自由归一]
-    C5 -- 否 --> C7{是否读取到字段语义}
-    C7 -- 否 --> C6
-    C7 -- 是 --> D1[进入语义归一路径]
+    F2 -- 否 --> F6[仅单表查询]
+    F2 -- 是 --> F3[按相邻实体生成joins列表]
+    F3 --> F4{问句命中缺失关联语义}
+    F4 -- 是 --> F5[设置join_type等于left]
+    F4 -- 否 --> F7[设置join_type等于inner]
 
-    D1 --> D2{别名字典是否命中}
-    D2 -- 是 --> D3{是否满足闭集约束}
-    D3 -- 是 --> D4[采用字典命中值]
-    D3 -- 否 --> D5[继续后续判断]
-    D2 -- 否 --> D5
-
-    D5 --> D6{是否存在闭集}
-    D6 -- 是 --> D7[闭集归一]
-    D6 -- 否 --> D8{是否区域类严格字段}
-
-    D8 -- 是 --> D9[保留原值 不走模型]
-    D8 -- 否 --> D10[自由归一]
-
-    D7 --> E1{原值是否在闭集中}
-    E1 -- 是 --> E2[直接采用]
-    E1 -- 否 --> E3{别名是否可映射到闭集}
-    E3 -- 是 --> E4[采用别名映射值]
-    E3 -- 否 --> E5{是否可调用模型}
-    E5 -- 否 --> E8[回退原值]
-    E5 -- 是 --> E6[模型在闭集候选中选择]
-    E6 --> E7{置信度是否达标}
-    E7 -- 是 --> E9[采用模型结果]
-    E7 -- 否 --> E8
-
-    D10 --> F1{原值是否为空}
-    F1 -- 是 --> F4[保持原值]
-    F1 -- 否 --> F2[模型自由归一]
-    F2 --> F3{置信度是否达阈值}
-    F3 -- 是 --> F5[采用归一结果]
-    F3 -- 否 --> F6[回退原值]
-
-    C3 --> G1[回写条件和归一追踪]
-    D4 --> G1
-    D9 --> G1
-    E2 --> G1
-    E4 --> G1
-    E9 --> G1
-    E8 --> G1
-    F4 --> G1
-    F5 --> G1
-    F6 --> G1
-    G1 --> G2[输出值归一明细]
+    F5 --> F8[输出query_plan含joins]
+    F7 --> F8
+    F6 --> F8
 ```
 
-## 5. 步骤06-07 字段提取与计算规则
+说明：缺失关联语义关键词包括“未关联、没有关联、无关联、未匹配、不存在、为空、缺失、未配置”等。
+
+## 5. 步骤05 与 05B（条件筛选和值归一）
 
 ```mermaid
 flowchart TD
-    E0[输入输出字段] --> E1[字段提取]
-    E1 --> E2[字段别名解析]
-    E2 --> E3{字段是否存在}
-    E3 -- 是 --> E7[保留字段]
-    E3 -- 否 --> E4[相似字段纠错]
-    E4 --> E5{纠错是否成功}
-    E5 -- 是 --> E7
-    E5 -- 否 --> E6[忽略该字段]
-    E7 --> E8[得到提取字段列表]
+    G0[clarified_intent.conditions] --> G1[步骤05 条件筛选]
+    G1 --> G2[操作符归一化和in值标准化]
+    G2 --> G3[字段别名解析与字段纠错]
+    G3 --> G4[本体value_aliases归一]
+    G4 --> G5[区划contains收敛为等号]
+    G5 --> H0[步骤05B 值归一]
 
-    E8 --> F0[计算方法判定]
-    F0 --> F1{是否比率类问题}
-    F1 -- 是 --> F2[推断比率目标字段]
-    F2 --> F3[计算类型改为比率]
-    F1 -- 否 --> F4[保持原计算类型]
+    H0 --> H1[读取数据层字段值语义]
+    H1 --> H2{命中aliases}
+    H2 -- 是 --> H3[strict_dict命中]
+    H2 -- 否 --> H4{是否存在closed_set}
 
-    F3 --> F5[增强比率参数]
-    F5 --> F7{是否已给真值集合}
-    F7 -- 是 --> F8[使用已有真值集合]
-    F7 -- 否 --> F9[读取数据层字段语义]
-    F9 --> F10{是否可从语义得到真值集合}
-    F10 -- 是 --> F11[采用语义真值集合]
-    F10 -- 否 --> F12{目标字段是否布尔型}
-    F12 -- 是 --> F13[采用布尔兜底真值集合]
-    F12 -- 否 --> F14[真值集合留空]
+    H4 -- 是 --> H5[闭集选择并置信度校验]
+    H4 -- 否 --> H6{是否严格字段如区划类}
+    H6 -- 是 --> H7[保留原值]
+    H6 -- 否 --> H8[自由归一LLM兜底]
 
-    F4 --> F6{当前是否明细型}
-    F6 -- 是 --> F15[按关键词兜底推断计算类型]
-    F6 -- 否 --> F16[保持]
-
-    F15 --> F17[汇总最终计算参数]
-    F16 --> F17
-    F8 --> F17
-    F11 --> F17
-    F13 --> F17
-    F14 --> F17
-    F17 --> F18[构建查询规格]
+    H3 --> H9[回写conditions和value_resolution日志]
+    H5 --> H9
+    H7 --> H9
+    H8 --> H9
 ```
 
-## 6. 步骤08 DSL与SQL生成
+## 6. 步骤08 SQL生成（INNER和LEFT）
 
 ```mermaid
 flowchart TD
-    G0[输入查询规划与计算规则] --> G1{是否命中预置SQL}
+    I0[输入query_plan conditions fields calc_rule] --> I1[按实体生成表别名]
+    I1 --> I2[读取joins中的join_type]
+    I2 --> I3{join_type是否为left}
 
-    G1 -- 是 --> G2[解析并改写预置SQL]
-    G2 --> G3{预置SQL是否可解析}
-    G3 -- 否 --> G4[直接使用原预置SQL]
-    G3 -- 是 --> G5[注入分组排序限制和条件]
-    G5 --> G6[映射失败字段忽略并记录日志]
+    I3 -- 否 --> I4[生成INNER JOIN ON主键关系]
+    I3 -- 是 --> I5[生成LEFT JOIN ON主键关系]
+    I5 --> I6[将右表条件下沉到ON]
 
-    G1 -- 否 --> H1[按数据源逐个生成SQL]
-    H1 --> H2[构建主表与关联]
-    H2 --> H3{关联键是否可解析}
-    H3 -- 是 --> H4[优先关系配置 其次兜底猜测]
-    H3 -- 否 --> H5[降级处理]
-    H4 --> H6[构建选择列]
-    H5 --> H6
-
-    H6 --> H7{按计算类型选择模板}
-    H7 -- 明细 --> H8[生成明细选择]
-    H7 -- 计数 --> H9[生成计数选择]
-    H7 -- 求和均值极值 --> H10[生成聚合选择]
-    H7 -- 分组计数 --> H11[生成分组计数选择]
-    H7 -- 排名前N --> H12[生成排名选择]
-    H7 -- 比率 --> H13[生成比率表达式]
-
-    H13 --> H14{比率真值集合是否为空}
-    H14 -- 否 --> H15[使用给定真值集合]
-    H14 -- 是 --> H16{目标字段是否布尔型}
-    H16 -- 是 --> H17[采用布尔兜底真值]
-    H16 -- 否 --> H18[采用默认真值并告警]
-
-    H8 --> H19[构建过滤条件]
-    H9 --> H19
-    H10 --> H19
-    H11 --> H19
-    H12 --> H19
-    H15 --> H19
-    H17 --> H19
-    H18 --> H19
-
-    H19 --> H20[组装分组排序限制]
-    H20 --> H21[输出每个数据源的DSL和SQL]
+    I4 --> I7[组装SELECT模板 count detail group rate topn]
+    I6 --> I7
+    I7 --> I8[剩余条件写入WHERE]
+    I8 --> I9[追加GROUP BY ORDER BY LIMIT]
+    I9 --> I10[输出每个数据源SQL]
 ```
 
-## 7. 步骤09 执行与结果合并
+关键点：
+- `LEFT JOIN` 下，右表条件下沉到 `ON`。
+- 未下沉的条件才放 `WHERE`。
+- 这样可以避免 `LEFT JOIN` 被错误退化为 `INNER JOIN`。
+
+## 7. 步骤09 执行计算（SQL优先）
 
 ```mermaid
 flowchart TD
-    I0[ComputeAgent] --> I1[遍历 dispatch.data_sources]
-    I1 --> I2{存在 dsl_query.sql
-且 store.execute_sql 可用?}
-    I2 -- 是 --> I3[直接 execute_sql]
-    I2 -- 否 --> I4[_execute_for_source
-DataFrame 逻辑执行]
+    J0[遍历数据源] --> J1{是否有dsl_query.sql且store支持execute_sql}
+    J1 -- 是 --> J2[直接执行SQL]
+    J1 -- 否 --> J3[DataFrame回退执行]
 
-    I4 --> I5{单实体?}
-    I5 -- 是 --> I6[_simple_query]
-    I5 -- 否 --> I7[_join_query]
+    J3 --> J4{单实体还是多实体}
+    J4 -- 单实体 --> J5[simple_query]
+    J4 -- 多实体 --> J6[join_query]
 
-    I6 --> I8[query/aggregate/rate/topn 分支]
-    I7 --> I9[多表 merge + 条件过滤 + 聚合/排序]
+    J6 --> J7[按query_plan.joins使用inner或left merge]
+    J5 --> J8[聚合或明细处理]
+    J7 --> J8
+    J2 --> J8
 
-    I8 --> I10[得到 DataFrame]
-    I9 --> I10
-    I3 --> I10
-
-    I10 --> I11{多数据源?}
-    I11 -- 否 --> I12[直接作为最终结果]
-    I11 -- 是 --> I13[concat 并补 _source 列]
-
-    I12 --> I14[输出 compute_result + compute_result_df]
-    I13 --> I14
+    J8 --> J9[多数据源结果合并]
+    J9 --> J10[输出compute_result]
 ```
 
-## 8. 步骤10-12 质检、回答与图表
+## 8. 步骤10到12（质检 回答 图表）
 
 ```mermaid
 flowchart TD
-    J0[QualityCheckAgent] --> J1{compute_result 为空?}
-    J1 -- 是 --> J2[记录 issue: 结果为空]
-    J1 -- 否 --> J3[计算 expected_fields]
-    J3 --> J4{缺字段?}
-    J4 -- 是 --> J5[记录 missing fields]
-    J4 -- 否 --> J6[继续]
-    J5 --> J6
-    J2 --> J6
-    J6 --> J7[产出 quality_check]
+    K0[质量检查] --> K1{结果为空或字段缺失}
+    K1 -- 是 --> K2[记录issues]
+    K1 -- 否 --> K3[质量通过]
 
-    J7 --> K0[AnswerAgent]
-    K0 --> K1{quality_check.passed?}
-    K1 -- 否 --> K2[答案前置告警问题]
-    K1 -- 是 --> K3[不加告警]
-    K2 --> K4
-    K3 --> K4
-    K4 --> K5{compute_result 为空?}
-    K5 -- 是 --> K6[输出无数据文案]
-    K5 -- 否 --> K7[tabulate 结果表]
-    K7 --> K8{LLM 调用成功?}
-    K8 -- 是 --> K9[自然语言回答]
-    K8 -- 否 --> K10[兜底: 输出表格文本]
+    K2 --> L0[答案生成]
+    K3 --> L0
 
-    K6 --> L0[ChartAgent]
-    K9 --> L0
-    K10 --> L0
-    L0 --> L1{有结果 且 calc_type 在
-count/group_count/sum/avg/max/min?}
-    L1 -- 是 --> L2[生成 chart.png]
-    L1 -- 否 --> L3[跳过图表]
+    L0 --> L1{LLM回答是否成功}
+    L1 -- 是 --> L2[自然语言回答]
+    L1 -- 否 --> L3[兜底表格回答]
+
+    L2 --> M0[图表生成]
+    L3 --> M0
+    M0 --> M1{是否满足图表条件}
+    M1 -- 是 --> M2[输出chart.png]
+    M1 -- 否 --> M3[跳过图表]
 ```
 
-## 9. 当前实现中的“关键过滤点”清单
+## 9. 关键过滤点与兜底点（更新后）
 
-- 问题级过滤：`rewrite_rules` 仅替换命中词，不命中不改写。
-- 意图级过滤：`calc_type` 白名单、`op` 白名单、`data_source` 合法性校验。
-- 条件级过滤：字段不存在时尝试相似纠错；纠错失败直接丢弃该条件。
-- 区划条件过滤：区划字段的 `contains` 在单值场景收敛成 `=`。
-- 值语义过滤：多数据源语义不一致时，直接放弃语义约束，退回模型自由归一。
-- strict_dict 过滤：区域类字段 alias 未命中时不走 LLM，防止错映射。
-- 闭集过滤：LLM 选闭集值必须满足 `confidence_threshold`，否则回退原值。
-- 比率真值过滤：优先 `rate_true_values`，其次闭集推断，再到布尔兜底。
-- SQL 条件过滤：`in []` 强制 `1=0`，`None` 转 `IS NULL/IS NOT NULL`。
-- 质检过滤：结果为空、字段缺失会生成 issues，传递给回答阶段。
+### 关键过滤点
+- Step00：LLM规划结果会做结构合法性校验，不合法回退规则拆解。
+- Step05：字段不存在先纠错，纠错失败直接丢弃该条件。
+- Step05B：闭集选择需满足置信阈值，否则回退原值。
+- Step08：`LEFT JOIN` 右表条件优先下沉 `ON`，防止语义误伤。
 
-## 10. 当前实现中的“关键兜底点”清单
-
-- 意图澄清 LLM 不可用时，返回最小化结构并走后续流程。
-- 知识验证未通过不会拦截，只告警继续执行。
-- 调度目前默认 `action=execute`，仅保留中止钩子。
-- rate 未识别目标字段时，尽量退化到候选首字段。
-- rate 未配置真值时：布尔字段用布尔兜底；非布尔字段默认 `['是']`。
-- SQL JOIN 无法解析时，退化到弱关联/并列表达，不抛异常中断。
-- 执行阶段每个数据源异常互相隔离，失败源返回空 DataFrame。
-- 回答阶段 LLM 异常时退化为“表格文本回答”。
-- 图表阶段异常仅记录日志，不影响主答案输出。
+### 关键兜底点
+- Step00：LLM不可用或异常时，回退规则拆解。
+- Step01：LLM异常时返回最小结构继续流程。
+- Step08：关联键无法解析时退化为弱关联路径并记录日志。
+- Step09：单数据源失败不拖垮整体，返回空结果并继续后续步骤。
 
 ---
 
-如需“按文件/函数级别”的流程图（标注到函数名和行号）可以在本文件继续追加 V2。 
+如果你需要，我可以再补一版“按文件/函数级别”的流程图（每个节点标注到具体函数名）。
