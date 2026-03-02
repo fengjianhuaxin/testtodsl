@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Runtime outputs and logs
+output/
+*.log
+
+# Local runtime data (may contain secrets or noisy history)
+data/chat_history.json
+data/dsl_logs.json
+data/llm_config.json
+data/db_config.json
+data/users.json
+

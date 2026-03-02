@@ -1,0 +1,142 @@
+﻿py : Traceback (most 
+recent call last):
+所在位置 行:1 字符: 51
++ ... NG='utf-8'; py 
+main.py query "统计A大学男
+生和女生的人数" --source uni
+versity_a 2> ...
++                 ~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~
+    + CategoryInfo   
+           : NotSpeci
+fied: (Trace    back 
+(most recent call    
+ last)::String) [], R
+emo    teException
+    + FullyQualifiedE
+rrorId     : NativeCo
+mmandError
+ 
+  File "D:\鏁板瓧鐮旂┒闄㈠伐浣
+淺璁ょ煡涓栫晫澶фā鍨媆鏈綋璁篜OC\D
+emo1\pipeline\orchest
+rator.py", line 80, i
+n run
+    pipeline_data = a
+gent.run(pipeline_dat
+a)
+  File "D:\鏁板瓧鐮旂┒闄㈠伐浣
+淺璁ょ煡涓栫晫澶фā鍨媆鏈綋璁篜OC\D
+emo1\agents\intent_cl
+arify_agent.py", line
+ 38, in run
+    result = self.llm
+.chat_json(system_pro
+mpt, raw_question)
+  File "D:\鏁板瓧鐮旂┒闄㈠伐浣
+淺璁ょ煡涓栫晫澶фā鍨媆鏈綋璁篜OC\D
+emo1\llm\qwen_client.
+py", line 35, in chat
+_json
+    text = self.chat(
+full_system, user_mes
+sage, temperature)
+  File "D:\鏁板瓧鐮旂┒闄㈠伐浣
+淺璁ょ煡涓栫晫澶фā鍨媆鏈綋璁篜OC\D
+emo1\llm\qwen_client.
+py", line 20, in chat
+    response = self.c
+lient.chat.completion
+s.create(
+        model=self.mo
+del,
+    ...<4 lines>...
+        temperature=t
+emperature,
+    )
+  File "C:\Users\vinc
+ent\AppData\Local\Pro
+grams\Python\Python31
+3\Lib\site-packages\o
+penai\_utils\_utils.p
+y", line 286, in wrap
+per
+    return func(*args
+, **kwargs)
+  File "C:\Users\vinc
+ent\AppData\Local\Pro
+grams\Python\Python31
+3\Lib\site-packages\o
+penai\resources\chat\
+completions\completio
+ns.py", line 1192, in
+ create
+    return self._post
+(
+           ~~~~~~~~~~
+^
+        "/chat/comple
+tions",
+        ^^^^^^^^^^^^^
+^^^^^^^
+    ...<47 lines>...
+        stream_cls=St
+ream[ChatCompletionCh
+unk],
+        ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^
+^^^^^
+    )
+    ^
+  File "C:\Users\vinc
+ent\AppData\Local\Pro
+grams\Python\Python31
+3\Lib\site-packages\o
+penai\_base_client.py
+", line 1297, in post
+    return cast(Respo
+nseT, self.request(ca
+st_to, opts, stream=s
+tream, stream_cls=str
+eam_cls))
+                     
+      ~~~~~~~~~~~~^^^
+^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^
+  File "C:\Users\vinc
+ent\AppData\Local\Pro
+grams\Python\Python31
+3\Lib\site-packages\o
+penai\_base_client.py
+", line 1070, in requ
+est
+    raise self._make_
+status_error_from_res
+ponse(err.response) f
+rom None
+openai.BadRequestErro
+r: Error code: 400 - 
+{'code': 20012, 'mess
+age': 'Model does not
+ exist. Please check 
+it carefully.', 'data
+': None}
+
+============================================================
+馃殌 寮€濮嬪鐞? 缁熻A澶у鐢风敓鍜屽コ鐢熺殑浜烘暟
+============================================================
+
+--- 姝ラ 01_鎰忓浘婢勬竻 ---
+  [17:14:34] 馃 鎰忓浘婢勬竻鏅鸿兘浣? 鍒嗘瀽鐢ㄦ埛闂: 缁熻A澶у鐢风敓鍜屽コ鐢熺殑浜烘暟
+
+鉂?姝ラ 01_鎰忓浘婢勬竻 鎵ц澶辫触: Error code: 400 - {'code': 20012, 'message': 'Model does not exist. Please check it carefully.', 'data': None}
+
+============================================================
+馃搵 鏈€缁堢瓟妗?
+============================================================
+鏃犵瓟妗?
+
+馃搧 涓棿浜х墿鐩綍: D:\鏁板瓧鐮旂┒闄㈠伐浣淺璁ょ煡涓栫晫澶фā鍨媆鏈綋璁篜OC\Demo1\output\20260218_171434

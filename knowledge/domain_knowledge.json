@@ -1,0 +1,106 @@
+{
+  "term_knowledge": [
+    {
+      "id": "term_business_system",
+      "term": "业务系统",
+      "keywords": [
+        "业务系统",
+        "生产系统",
+        "业务应用"
+      ],
+      "content": "业务系统指承载具体业务流程的应用系统，统计口径通常按系统编码去重，不包含测试环境、临时脚本和一次性工具。"
+    },
+    {
+      "id": "term_should_but_not_registered",
+      "term": "应编未编",
+      "keywords": [
+        "应编未编",
+        "应编",
+        "未编"
+      ],
+      "content": "应编未编通常指按制度要求应纳入台账或目录、但当前未纳入的对象。统计时需按制度口径进行差集计算：应纳入集合 - 已纳入集合。"
+    },
+    {
+      "id": "5ef7f280",
+      "term": "上云率",
+      "keywords": [
+        "上云率",
+        "系统上云率"
+      ],
+      "content": "上云率口径：在用系统中，上云系统占比。计算方式=上云且在用系统数 / 在用系统总数 × 100%。"
+    },
+    {
+      "id": "f2a5c1f3",
+      "term": "业务系统",
+      "keywords": [
+        "业务系统"
+      ],
+      "content": "业务系统是系统的一个类型"
+    }
+  ],
+  "rewrite_rules": [
+    {
+      "id": "rw_province_inside",
+      "source": "省内",
+      "target": "江苏省",
+      "description": "全局同义词：省内统一为江苏省",
+      "enabled": true
+    },
+    {
+      "id": "06a6d516",
+      "source": "全省",
+      "target": "江苏省",
+      "description": "",
+      "enabled": true
+    }
+  ],
+  "sql_metric_rules": [
+    {
+      "id": "metric_cloud_rate",
+      "name": "上云率",
+      "keywords": [
+        "上云率",
+        "系统上云率"
+      ],
+      "target_entities": [
+        "INFORMATION_SYSTEM"
+      ],
+      "data_source": "xksx",
+      "sql": "SELECT ROUND(COUNT(CASE WHEN isuncloud = '是' AND system_status = '在用' THEN info_system_name END) * 100.0 / NULLIF(COUNT(CASE WHEN system_status = '在用' THEN info_system_name END), 0), 2) AS `上云率` FROM INFORMATION_SYSTEM",
+      "priority": 200,
+      "description": "预定义指标SQL：在用系统上云率",
+      "enabled": true
+    },
+    {
+      "id": "ae8fae77",
+      "name": "数据目录资源挂载率",
+      "keywords": [
+        "数据目录资源挂载率"
+      ],
+      "target_entities": [
+        "DATA_CATALOG"
+      ],
+      "data_source": "xksx",
+      "sql": "SELECT  ROUND(    COUNT(      CASE        WHEN is_has_resource = '是' THEN data_catalog_code      END    ) * 100.0 / COUNT(data_catalog_code),    2  ) AS `资源挂载率` FROM  data_catalog",
+      "priority": 100,
+      "description": "",
+      "enabled": true
+    },
+    {
+      "id": "metric_open_catalog_count",
+      "name": "开放目录数量",
+      "keywords": [
+        "开放目录数量",
+        "开放目录数"
+      ],
+      "target_entities": [
+        "DATA_CATALOG"
+      ],
+      "data_source": "xksx",
+      "sql": "SELECT COUNT(*) AS `开放目录数量` FROM DATA_CATALOG WHERE OPEN_TYPE IN ('无条件开放', '有条件开放')",
+      "priority": 190,
+      "description": "预定义指标SQL：开放目录数量（按开放类型口径）",
+      "enabled": true
+    }
+  ]
+}
