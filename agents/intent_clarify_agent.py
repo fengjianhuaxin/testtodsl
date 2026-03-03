@@ -43,6 +43,7 @@ class IntentClarifyAgent(BaseAgent):
             target_entities = metric_rule_hit.get("target_entities") or self._extract_target_entities(
                 metric_rule_hit.get("sql", "")
             )
+            primary_entity = target_entities[0] if target_entities else ""
             metric_hints = self._extract_metric_hints(raw_question, target_entities)
             conditions = metric_hints.get("conditions", [])
             output_fields = metric_hints.get("output_fields", [])
@@ -56,6 +57,8 @@ class IntentClarifyAgent(BaseAgent):
             result = {
                 "clarified_question": raw_question,
                 "target_entities": target_entities,
+                "primary_entity": primary_entity,
+                "primary_entity_source": "metric_rule_default_first_entity",
                 "conditions": conditions,
                 "output_fields": output_fields,
                 "calc_type": "custom_sql",
@@ -74,6 +77,7 @@ class IntentClarifyAgent(BaseAgent):
                 f"意图澄清完成: 目标实体={result.get('target_entities')}, "
                 f"计算类型={result.get('calc_type')}, 数据源={result.get('data_source')}"
             )
+            self.log(f"primary_entity_source={result.get('primary_entity_source', '')}")
             return {
                 **input_data,
                 "clarified_intent": result,
@@ -104,6 +108,7 @@ $knowledge_block
 {
   "clarified_question": "澄清后的问题",
   "target_entities": ["实体英文名"],
+  "primary_entity": "主本体英文名",
   "conditions": [
     {"field":"属性英文名","op":"=|!=|>|<|>=|<=|contains|in","value":"值","entity":"实体英文名"}
   ],
@@ -130,6 +135,11 @@ $knowledge_block
         default_system_template += (
             "\n6) conditions.value must keep user semantic text and must not convert to database code values."
         )
+        default_system_template += (
+            "\n7) Must output primary_entity."
+            "\n8) If target_entities has multiple entities, primary_entity must be one of them."
+            "\n9) If target_entities has exactly one entity, primary_entity must equal target_entities[0]."
+        )
         system_prompt = self._render_prompt(
             key="intent_clarify_system",
             default_template=default_system_template,
@@ -138,6 +148,12 @@ $knowledge_block
                 "available_sources": ", ".join(input_data.get("available_sources", {}).keys()),
                 "knowledge_block": knowledge_block,
             },
+        )
+        system_prompt += (
+            "\n\nMandatory output contract:"
+            "\n- JSON must include field: primary_entity"
+            "\n- primary_entity must be one item from target_entities"
+            "\n- if model cannot decide, leave primary_entity empty"
         )
 
         if not self.llm:
@@ -159,6 +175,7 @@ $knowledge_block
             f"意图澄清完成: 目标实体={result.get('target_entities')}, "
             f"计算类型={result.get('calc_type')}, 数据源={result.get('data_source')}"
         )
+        self.log(f"primary_entity_source={result.get('primary_entity_source', '')}")
         return {
             **input_data,
             "clarified_intent": result,
@@ -488,6 +505,20 @@ $property_block
             if entity_name and entity_name not in target_entities:
                 target_entities.append(entity_name)
         default_entity = target_entities[0] if target_entities else ""
+        raw_primary_entity = str(parsed.get("primary_entity", "")).strip().upper()
+        primary_entity = ""
+        primary_entity_source = ""
+        if raw_primary_entity and raw_primary_entity in target_entities:
+            primary_entity = raw_primary_entity
+            primary_entity_source = "model"
+        elif raw_primary_entity and not target_entities:
+            primary_entity = raw_primary_entity
+            target_entities = [raw_primary_entity]
+            default_entity = raw_primary_entity
+            primary_entity_source = "model_only_primary"
+        elif target_entities:
+            primary_entity = target_entities[0]
+            primary_entity_source = "fallback_first_entity"
 
         conditions = []
         raw_conditions = parsed.get("conditions", [])
@@ -587,6 +618,8 @@ $property_block
         return {
             "clarified_question": clarified_question,
             "target_entities": target_entities,
+            "primary_entity": primary_entity,
+            "primary_entity_source": primary_entity_source,
             "conditions": conditions,
             "output_fields": output_fields,
             "calc_type": calc_type,

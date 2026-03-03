@@ -22,6 +22,7 @@ $knowledge_block
 {
   "clarified_question": "澄清后的问题",
   "target_entities": ["实体英文名"],
+  "primary_entity": "主本体英文名",
   "conditions": [
     {"field":"属性英文名","op":"=|!=|>|<|>=|<=|contains|in","value":"值","entity":"实体英文名"}
   ],
@@ -43,7 +44,10 @@ $knowledge_block
 2) “最高/最大” => order_by=__metric__, order_dir=desc, limit=1。
 3) “最低/最小” => order_by=__metric__, order_dir=asc, limit=1。
 4) 如果是 sum/avg/max/min 且同时询问“各XX分别”，优先按维度字段分组，不要仅返回全局汇总。
-5) data_source 除非用户明确指定，否则一律为 all。""",
+5) data_source 除非用户明确指定，否则一律为 all。
+6) 必须输出 primary_entity。
+7) 多本体时，primary_entity 必须来自 target_entities，并代表问题的主语义主体。
+8) 单本体时，primary_entity 必须等于 target_entities[0]。""",
         },
         "metric_hint_system": {
             "name": "指标规则补充提示词",

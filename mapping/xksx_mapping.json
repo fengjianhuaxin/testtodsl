@@ -76,10 +76,26 @@
             "field_value_semantics": {
                 "DEPT_NAME": {
                     "aliases": {
-                        "省人社厅": "江苏省人社厅",
-                        "江苏省人社厅": "江苏省人社厅"
+                        "江苏省人社厅": "江苏省人社厅",
+                        "省人社厅": "江苏省人社厅"
                     },
                     "confidence_threshold": 1,
+                    "unknown_policy": "ask"
+                },
+                "ISUNCLOUD": {
+                    "aliases": {
+                        "未上云": "是",
+                        "已上云": "否"
+                    },
+                    "closed_set": [
+                        "是",
+                        "否"
+                    ],
+                    "confidence_threshold": 0.75,
+                    "labels": {
+                        "是": "未上云",
+                        "否": "已上云"
+                    },
                     "unknown_policy": "ask"
                 }
             }
@@ -196,27 +212,44 @@
             "table_name": "GOVERNMENT_PROJECT",
             "file_name": "GOVERNMENT_PROJECT.xlsx",
             "field_mappings": {
-                "PROJECT_CODE": "PROJECT_CODE",
-                "PROJECT_NAME": "PROJECT_NAME",
-                "PROJECT_TYPE": "PROJECT_TYPE",
-                "DEPT_NAME": "DEPT_NAME",
-                "DEPT_CODE": "DEPT_CODE",
-                "PROJECT_STATUS": "PROJECT_STATUS",
-                "PROJECT_PHASE": "PROJECT_PHASE",
+                "AREACODE": "AREACODE",
                 "CONSTRUCTION_COMPANY": "CONSTRUCTION_COMPANY",
-                "PROJECT_DECLARE_TIME": "PROJECT_DECLARE_TIME",
+                "CREATE_TIME": "CREATE_TIME",
+                "DEPT_CODE": "DEPT_CODE",
+                "DEPT_NAME": "DEPT_NAME",
+                "IS_DELETE": "IS_DELETE",
+                "PROJECT_AMOUNT": "PROJECT_AMOUNT",
                 "PROJECT_APPROVAL_TIME": "PROJECT_APPROVAL_TIME",
-                "PROJECT_START_TIME": "PROJECT_START_TIME",
+                "PROJECT_CODE": "PROJECT_CODE",
                 "PROJECT_COMPLETION_TIME": "PROJECT_COMPLETION_TIME",
                 "PROJECT_CONTRACT_CODE": "PROJECT_CONTRACT_CODE",
-                "PROJECT_AMOUNT": "PROJECT_AMOUNT",
+                "PROJECT_DECLARE_TIME": "PROJECT_DECLARE_TIME",
                 "PROJECT_FUND_SOURCE": "PROJECT_FUND_SOURCE",
-                "AREACODE": "AREACODE",
+                "PROJECT_NAME": "PROJECT_NAME",
+                "PROJECT_PHASE": "PROJECT_PHASE",
+                "PROJECT_START_TIME": "PROJECT_START_TIME",
+                "PROJECT_STATUS": "PROJECT_STATUS",
+                "PROJECT_TYPE": "PROJECT_TYPE",
                 "ROWGUID": "ROWGUID",
                 "ROW_ID": "ROW_ID",
-                "CREATE_TIME": "CREATE_TIME",
-                "UPDATE_TIME": "UPDATE_TIME",
-                "IS_DELETE": "IS_DELETE"
+                "UPDATE_TIME": "UPDATE_TIME"
+            },
+            "field_value_semantics": {
+                "PROJECT_STATUS": {
+                    "aliases": {
+                        "申报中": "申报中"
+                    },
+                    "closed_set": [
+                        "申报中",
+                        "已竣工"
+                    ],
+                    "confidence_threshold": 0.75,
+                    "labels": {
+                        "申报中": "申报中",
+                        "已竣工": "已竣工"
+                    },
+                    "unknown_policy": "ask"
+                }
             }
         },
         "GOVERNMENT_TASK_CATALOG": {

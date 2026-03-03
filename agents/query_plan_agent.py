@@ -32,8 +32,12 @@ class QueryPlanAgent(BaseAgent):
     def run(self, input_data: dict) -> dict:
         intent = input_data["clarified_intent"]
         target_entities = intent.get("target_entities", [])
+        primary_entity = str(intent.get("primary_entity", "")).strip().upper()
+        target_entities = self._reorder_by_primary_entity(target_entities, primary_entity)
         question_text = str(input_data.get("raw_question") or input_data.get("question") or "").strip()
         self.log(f"构建对象子图，涉及实体: {target_entities}")
+        if len(target_entities) > 1 and primary_entity:
+            self.log(f"主本体锚定: primary_entity={primary_entity}, ordered={target_entities}")
 
         subgraph = {"entities": [], "relations": [], "paths": [], "joins": []}
 
@@ -87,6 +91,23 @@ class QueryPlanAgent(BaseAgent):
 
         self.log(f"子图构建完成: {len(subgraph['entities'])}个实体, {len(subgraph['relations'])}个关系")
         return {**input_data, "query_plan": subgraph}
+
+    @staticmethod
+    def _reorder_by_primary_entity(target_entities: list, primary_entity: str) -> list:
+        entities = []
+        for item in target_entities if isinstance(target_entities, list) else []:
+            name = str(item).strip().upper()
+            if name and name not in entities:
+                entities.append(name)
+        if len(entities) <= 1:
+            return entities
+
+        primary = str(primary_entity or "").strip().upper()
+        if primary and primary in entities:
+            ordered = [primary]
+            ordered.extend(name for name in entities if name != primary)
+            return ordered
+        return entities
 
     def _infer_join_type(self, question_text: str, left_entity: str, right_entity: str) -> tuple[str, str]:
         llm_decision = self._infer_join_type_with_llm(question_text, left_entity, right_entity)
