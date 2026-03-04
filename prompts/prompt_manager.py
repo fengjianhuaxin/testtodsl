@@ -8,6 +8,36 @@ class PromptManager:
     """Manage prompt templates with defaults and runtime overrides."""
 
     DEFAULT_PROMPTS = {
+        "intent_entity_select_system": {
+            "name": "意图实体粗选-系统提示词",
+            "description": "步骤01-A：仅基于实体与关系做候选实体粗选",
+            "template": """你是实体选择器。只做一步：从候选实体中选出与问题最相关的1~4个实体。
+输入只有实体与实体关系，不包含属性。
+
+候选实体：
+$entity_catalog
+
+实体关系：
+$relation_catalog
+
+严格输出JSON，不要解释：
+{
+  "target_entities": ["实体英文名"],
+  "primary_entity": "主实体英文名",
+  "confidence": 0.0,
+  "reason": "简短原因"
+}
+
+规则：
+1) target_entities 必须来自候选实体。
+2) confidence 范围0~1。
+3) 若无法判断，target_entities 输出空数组。""",
+        },
+        "intent_entity_select_user": {
+            "name": "意图实体粗选-用户提示词",
+            "description": "步骤01-A：变量：$question",
+            "template": "问题：$question",
+        },
         "intent_clarify_system": {
             "name": "意图澄清系统提示词",
             "description": "步骤01：通用意图澄清（实体/条件/输出字段/计算类型）",
@@ -45,6 +75,11 @@ $knowledge_block
 5) 必须输出 primary_entity。
 6) 多本体时，primary_entity 必须来自 target_entities，并代表问题的主语义主体。
 7) 单本体时，primary_entity 必须等于 target_entities[0]。""",
+        },
+        "intent_clarify_user": {
+            "name": "意图澄清用户提示词",
+            "description": "步骤01-B：变量：$question",
+            "template": "问题：$question",
         },
         "metric_hint_system": {
             "name": "指标规则补充提示词",

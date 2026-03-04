@@ -9,6 +9,7 @@ from agents.base_agent import BaseAgent
 class IntentClarifyAgent(BaseAgent):
     FROM_PATTERN = re.compile(r"\bfrom\s+`?([a-zA-Z0-9_]+)`?", flags=re.IGNORECASE)
     ORDER_BY_PATTERN = re.compile(r"^(?P<field>.+?)\s+(?P<direction>asc|desc)$", flags=re.IGNORECASE)
+    ENTITY_SELECTION_MIN_CONFIDENCE = 0.55
     ALLOWED_CALC_TYPES = {
         "detail", "count", "sum", "avg", "rate", "max", "min", "group_count", "topn", "custom_sql",
     }
@@ -25,7 +26,8 @@ class IntentClarifyAgent(BaseAgent):
         raw_question = str(input_data.get("question", "")).strip()
         self.log(f"分析用户问题: {raw_question}")
 
-        ontology_desc = self.ontology.to_description()
+        all_entity_names = [str(name).strip().upper() for name in self.ontology.get_all_entity_names()]
+        ontology_desc_full = self.ontology.to_description()
         knowledge_snippets = []
         metric_rule_hit = None
 
@@ -68,6 +70,23 @@ class IntentClarifyAgent(BaseAgent):
                 "knowledge_context": knowledge_snippets,
                 "metric_sql_rule_hit": metric_rule_hit,
             }
+
+        entity_selection = self._select_entities_coarse(raw_question, all_entity_names)
+        selection_entities = entity_selection.get("target_entities", [])
+        selection_primary = str(entity_selection.get("primary_entity", "")).strip().upper()
+        use_scoped_ontology = bool(entity_selection.get("use_scoped")) and bool(selection_entities)
+        if use_scoped_ontology:
+            ontology_desc = self._build_scoped_ontology_desc(selection_entities)
+            self.log(
+                f"实体粗选完成: entities={selection_entities}, primary={selection_primary}, "
+                f"confidence={entity_selection.get('confidence', 0.0)}"
+            )
+        else:
+            ontology_desc = ontology_desc_full
+            self.log(
+                f"实体粗选未收敛，回退全量本体: entities={selection_entities}, "
+                f"confidence={entity_selection.get('confidence', 0.0)}"
+            )
 
         knowledge_block = self._build_knowledge_block(knowledge_snippets)
         default_system_template = """你是一个意图澄清智能体，负责把用户问题解析成结构化JSON。
@@ -116,13 +135,35 @@ $knowledge_block
             "\n- primary_entity must be one item from target_entities"
             "\n- if model cannot decide, leave primary_entity empty"
         )
+        if use_scoped_ontology and selection_entities:
+            system_prompt += (
+                "\n- target_entities must be chosen only from: "
+                + ", ".join(selection_entities)
+            )
 
         if not self.llm:
-            result = self._normalize_intent_result(raw_question, {})
+            result = self._normalize_intent_result(
+                question=raw_question,
+                result={},
+                allowed_entities=selection_entities if use_scoped_ontology else all_entity_names,
+                fallback_entities=selection_entities if use_scoped_ontology else [],
+                fallback_primary_entity=selection_primary,
+            )
         else:
-            model_result = self.llm.chat_json(system_prompt, raw_question)
+            user_prompt = self._render_prompt(
+                key="intent_clarify_user",
+                default_template="问题：$question",
+                context={"question": raw_question},
+            )
+            model_result = self.llm.chat_json(system_prompt, user_prompt)
             self.log(f"模型返回JSON: {self._json_for_log(model_result)}")
-            result = self._normalize_intent_result(raw_question, model_result)
+            result = self._normalize_intent_result(
+                question=raw_question,
+                result=model_result,
+                allowed_entities=selection_entities if use_scoped_ontology else all_entity_names,
+                fallback_entities=selection_entities if use_scoped_ontology else [],
+                fallback_primary_entity=selection_primary,
+            )
 
         self.log(
             f"意图澄清完成: 目标实体={result.get('target_entities')}, 计算类型={result.get('calc_type')}"
@@ -134,7 +175,221 @@ $knowledge_block
             "raw_question": raw_question,
             "knowledge_context": knowledge_snippets,
             "metric_sql_rule_hit": None,
+            "entity_selection": entity_selection,
         }
+
+    def _select_entities_coarse(self, question: str, all_entities: list[str]) -> dict:
+        heuristic = self._heuristic_entity_candidates(question, all_entities)
+        fallback = {
+            "target_entities": heuristic.get("target_entities", []),
+            "primary_entity": heuristic.get("primary_entity", ""),
+            "confidence": heuristic.get("confidence", 0.0),
+            "source": "heuristic",
+            "use_scoped": bool(heuristic.get("target_entities")),
+        }
+
+        if not self.llm or not all_entities:
+            return fallback
+
+        catalog_text = self._build_entity_catalog_text(all_entities)
+        relation_text = self._build_relation_catalog_text()
+        system_template = """你是实体选择器。只做一步：从候选实体中选出与问题最相关的1~4个实体。
+输入只有实体与实体关系，不包含属性。
+
+候选实体：
+$entity_catalog
+
+实体关系：
+$relation_catalog
+
+严格输出JSON，不要解释：
+{
+  "target_entities": ["实体英文名"],
+  "primary_entity": "主实体英文名",
+  "confidence": 0.0,
+  "reason": "简短原因"
+}
+
+规则：
+1) target_entities 必须来自候选实体。
+2) confidence 范围0~1。
+3) 若无法判断，target_entities 输出空数组。"""
+        user_template = "问题：$question"
+        system_prompt = self._render_prompt(
+            key="intent_entity_select_system",
+            default_template=system_template,
+            context={
+                "entity_catalog": catalog_text,
+                "relation_catalog": relation_text,
+            },
+        )
+        user_prompt = self._render_prompt(
+            key="intent_entity_select_user",
+            default_template=user_template,
+            context={"question": question},
+        )
+
+        try:
+            parsed = self.llm.chat_json(system_prompt, user_prompt)
+        except Exception as exc:
+            self.log(f"实体粗选失败，回退启发式: {exc}")
+            return fallback
+
+        normalized = self._normalize_entity_selection_result(parsed, all_entities, fallback)
+        confidence = float(normalized.get("confidence", 0.0))
+        normalized["use_scoped"] = bool(normalized.get("target_entities")) and confidence >= self.ENTITY_SELECTION_MIN_CONFIDENCE
+        return normalized
+
+    def _heuristic_entity_candidates(self, question: str, all_entities: list[str]) -> dict:
+        text = str(question or "").strip()
+        if not text or not all_entities:
+            return {"target_entities": [], "primary_entity": "", "confidence": 0.0}
+
+        lowered = text.lower()
+        scored = []
+        for entity_name in all_entities:
+            entity_def = self.ontology.get_entity(entity_name) or {}
+            label = str(entity_def.get("label", "")).strip()
+            aliases = entity_def.get("aliases", [])
+
+            candidate_tokens = [entity_name, label]
+            if isinstance(aliases, list):
+                candidate_tokens.extend([str(item).strip() for item in aliases if str(item).strip()])
+
+            best = 0.0
+            for token in candidate_tokens:
+                token_text = str(token).strip()
+                if not token_text:
+                    continue
+                token_lower = token_text.lower()
+                if token_lower in lowered:
+                    best = max(best, min(0.95, 0.45 + len(token_text) * 0.03))
+                elif len(token_text) >= 4 and lowered in token_lower:
+                    best = max(best, 0.35)
+
+            if best > 0:
+                scored.append((entity_name, best))
+
+        if not scored:
+            return {"target_entities": [], "primary_entity": "", "confidence": 0.0}
+
+        scored.sort(key=lambda item: item[1], reverse=True)
+        target_entities = [name for name, _ in scored[:4]]
+        confidence = self._clamp_confidence(scored[0][1])
+        return {
+            "target_entities": target_entities,
+            "primary_entity": target_entities[0] if target_entities else "",
+            "confidence": confidence,
+        }
+
+    def _normalize_entity_selection_result(self, payload: dict, all_entities: list[str], fallback: dict) -> dict:
+        parsed = payload if isinstance(payload, dict) else {}
+        allowed = {str(item).strip().upper() for item in all_entities if str(item).strip()}
+
+        raw_entities = parsed.get("target_entities", [])
+        if isinstance(raw_entities, str):
+            raw_entities = [raw_entities]
+        if not isinstance(raw_entities, list):
+            raw_entities = []
+
+        target_entities = []
+        for item in raw_entities:
+            name = str(item).strip().upper()
+            if not name or name not in allowed or name in target_entities:
+                continue
+            target_entities.append(name)
+
+        raw_primary = str(parsed.get("primary_entity", "")).strip().upper()
+        primary_entity = raw_primary if raw_primary in target_entities else ""
+        if not primary_entity and target_entities:
+            primary_entity = target_entities[0]
+
+        confidence = self._clamp_confidence(parsed.get("confidence", 0.0))
+        if not target_entities and fallback.get("target_entities"):
+            return {
+                "target_entities": list(fallback.get("target_entities", [])),
+                "primary_entity": str(fallback.get("primary_entity", "")).strip().upper(),
+                "confidence": max(float(fallback.get("confidence", 0.0)), 0.4),
+                "source": "heuristic_fallback",
+            }
+
+        return {
+            "target_entities": target_entities,
+            "primary_entity": primary_entity,
+            "confidence": confidence,
+            "source": "llm",
+        }
+
+    def _build_entity_catalog_text(self, all_entities: list[str]) -> str:
+        lines = []
+        for entity_name in all_entities:
+            entity_def = self.ontology.get_entity(entity_name) or {}
+            label = str(entity_def.get("label", "")).strip()
+            aliases = entity_def.get("aliases", [])
+            alias_texts = []
+            if isinstance(aliases, list):
+                for item in aliases:
+                    text = str(item).strip()
+                    if text and text not in alias_texts:
+                        alias_texts.append(text)
+            line = f"- {entity_name}"
+            if label:
+                line += f" ({label})"
+            if alias_texts:
+                line += f" aliases={','.join(alias_texts[:5])}"
+            lines.append(line)
+        return "\n".join(lines)
+
+    def _build_relation_catalog_text(self) -> str:
+        relations = self.ontology.relations if isinstance(self.ontology.relations, list) else []
+        if not relations:
+            return "(无显式关系)"
+        lines = []
+        for rel in relations:
+            from_entity = str(rel.get("from", "")).strip()
+            to_entity = str(rel.get("to", "")).strip()
+            label = str(rel.get("label", "")).strip() or str(rel.get("type", "related")).strip()
+            from_field = str(rel.get("from_field", "")).strip()
+            to_field = str(rel.get("to_field", "")).strip()
+            join_hint = ""
+            if from_field and to_field:
+                join_hint = f" ({from_field}={to_field})"
+            if from_entity and to_entity:
+                lines.append(f"- {from_entity} --[{label}]--> {to_entity}{join_hint}")
+        return "\n".join(lines) if lines else "(无显式关系)"
+
+    def _build_scoped_ontology_desc(self, selected_entities: list[str]) -> str:
+        selected = [str(item).strip().upper() for item in selected_entities if str(item).strip()]
+        lines = ["本体范围: 实体粗选后子集", "实体定义:"]
+        for entity_name in selected:
+            entity_def = self.ontology.get_entity(entity_name)
+            if not isinstance(entity_def, dict):
+                continue
+            lines.append(f"  [{entity_name}] ({entity_def.get('label', entity_name)}): {entity_def.get('description', '')}")
+            properties = entity_def.get("properties", {})
+            if isinstance(properties, dict):
+                for prop_name, prop_def in properties.items():
+                    if not isinstance(prop_def, dict):
+                        continue
+                    lines.append(f"    - {prop_name} ({prop_def.get('label', prop_name)}): {prop_def.get('type', 'string')}")
+
+        selected_set = set(selected)
+        lines.append("关系定义:")
+        has_relation = False
+        for rel in self.ontology.relations:
+            from_entity = str(rel.get("from", "")).strip().upper()
+            to_entity = str(rel.get("to", "")).strip().upper()
+            if from_entity not in selected_set or to_entity not in selected_set:
+                continue
+            has_relation = True
+            join_hint = ""
+            if rel.get("from_field") and rel.get("to_field"):
+                join_hint = f" ({rel.get('from_field')}={rel.get('to_field')})"
+            lines.append(f"  {from_entity} --[{rel.get('label', rel.get('type', 'related'))}]--> {to_entity}{join_hint}")
+        if not has_relation:
+            lines.append("  (无显式关系)")
+
+        return "\n".join(lines)
 
     def _build_knowledge_block(self, knowledge_snippets: list) -> str:
         if not knowledge_snippets:
@@ -200,9 +455,21 @@ $knowledge_block
         except Exception:
             return default_template
 
-    def _normalize_intent_result(self, question: str, result: dict) -> dict:
+    def _normalize_intent_result(
+        self,
+        question: str,
+        result: dict,
+        allowed_entities: list[str] | None = None,
+        fallback_entities: list[str] | None = None,
+        fallback_primary_entity: str = "",
+    ) -> dict:
         parsed = result if isinstance(result, dict) else {}
         clarified_question = str(parsed.get("clarified_question") or question).strip() or str(question or "")
+        allowed_entity_set = {
+            str(item).strip().upper()
+            for item in (allowed_entities or [])
+            if str(item).strip()
+        }
 
         target_entities_raw = parsed.get("target_entities", [])
         if isinstance(target_entities_raw, str):
@@ -213,8 +480,20 @@ $knowledge_block
         target_entities = []
         for item in target_entities_raw:
             entity_name = str(item).strip().upper()
-            if entity_name and entity_name not in target_entities:
+            if not entity_name:
+                continue
+            if allowed_entity_set and entity_name not in allowed_entity_set:
+                continue
+            if entity_name not in target_entities:
                 target_entities.append(entity_name)
+
+        fallback_entities = [
+            str(item).strip().upper()
+            for item in (fallback_entities or [])
+            if str(item).strip()
+        ]
+        if not target_entities and fallback_entities:
+            target_entities = [item for item in fallback_entities if not allowed_entity_set or item in allowed_entity_set]
 
         default_entity = target_entities[0] if target_entities else ""
         raw_primary_entity = str(parsed.get("primary_entity", "")).strip().upper()
@@ -224,13 +503,35 @@ $knowledge_block
             primary_entity = raw_primary_entity
             primary_entity_source = "model"
         elif raw_primary_entity and not target_entities:
-            primary_entity = raw_primary_entity
-            target_entities = [raw_primary_entity]
-            default_entity = raw_primary_entity
-            primary_entity_source = "model_only_primary"
+            candidate_primary = raw_primary_entity
+            if allowed_entity_set and candidate_primary not in allowed_entity_set:
+                candidate_primary = ""
+            if candidate_primary:
+                primary_entity = candidate_primary
+                target_entities = [candidate_primary]
+                default_entity = candidate_primary
+                primary_entity_source = "model_only_primary"
+            else:
+                fallback_primary = str(fallback_primary_entity or "").strip().upper()
+                if fallback_primary and (not allowed_entity_set or fallback_primary in allowed_entity_set):
+                    primary_entity = fallback_primary
+                    target_entities = [fallback_primary]
+                    default_entity = fallback_primary
+                    primary_entity_source = "selection_fallback_primary"
         elif target_entities:
             primary_entity = target_entities[0]
             primary_entity_source = "fallback_first_entity"
+        else:
+            fallback_primary = str(fallback_primary_entity or "").strip().upper()
+            if fallback_primary and (not allowed_entity_set or fallback_primary in allowed_entity_set):
+                primary_entity = fallback_primary
+                target_entities = [fallback_primary]
+                default_entity = fallback_primary
+                primary_entity_source = "selection_fallback_primary"
+
+        if primary_entity and primary_entity not in target_entities:
+            target_entities.insert(0, primary_entity)
+            default_entity = primary_entity
 
         conditions = []
         raw_conditions = parsed.get("conditions", [])
@@ -245,6 +546,8 @@ $knowledge_block
                 if op not in self.SUPPORTED_OPS:
                     op = "="
                 entity = str(item.get("entity", "")).strip().upper() or default_entity
+                if allowed_entity_set and entity and entity not in allowed_entity_set:
+                    entity = default_entity
                 conditions.append({
                     "field": field,
                     "op": op,
@@ -262,6 +565,8 @@ $knowledge_block
                 if not field:
                     continue
                 entity = str(item.get("entity", "")).strip().upper() or default_entity
+                if allowed_entity_set and entity and entity not in allowed_entity_set:
+                    entity = default_entity
                 label = str(item.get("label", "")).strip() or field
                 output_fields.append({
                     "field": field,
@@ -422,6 +727,18 @@ $knowledge_block
             refs.append(ref)
 
         return refs
+
+    @staticmethod
+    def _clamp_confidence(value) -> float:
+        try:
+            score = float(value)
+        except Exception:
+            score = 0.0
+        if score < 0.0:
+            return 0.0
+        if score > 1.0:
+            return 1.0
+        return score
 
     @staticmethod
     def _to_bool(value):
