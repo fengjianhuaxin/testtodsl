@@ -1,4 +1,4 @@
-"""DSL query agent: generate SPARQL and SQL."""
+﻿"""DSL query agent: generate SPARQL and SQL."""
 import re
 
 from agents.base_agent import BaseAgent
@@ -6,7 +6,7 @@ from agents.base_agent import BaseAgent
 
 class DSLQueryAgent(BaseAgent):
     def __init__(self, llm_client, mapping_manager, ontology_manager):
-        super().__init__("DSL查询智能体", "将分析结果转为 SPARQL 和 SQL 查询语句")
+        super().__init__("DSL查询智能体", "将分析结果转换为 SPARQL 和 SQL")
         self.llm = llm_client
         self.mapping = mapping_manager
         self.ontology = ontology_manager
@@ -19,9 +19,9 @@ class DSLQueryAgent(BaseAgent):
         calc_rule = input_data.get("calc_rule", {})
         query_spec = input_data.get("query_spec", {})
         dispatch = input_data.get("dispatch", {})
-        self.log("生成 DSL 查询语句...")
+        self.log("鐢熸垚 DSL 鏌ヨ璇彞...")
 
-        data_sources = dispatch.get("data_sources", ["xksx"])
+        source_id = str(dispatch.get("source_id", "")).strip() or str(input_data.get("source_id", "")).strip()
         custom_sql = str(intent.get("custom_sql", "")).strip()
         dsl_results = {}
 
@@ -30,37 +30,35 @@ class DSLQueryAgent(BaseAgent):
             rule_name = str(intent.get("custom_sql_rule_name", "")).strip()
             if rule_id or rule_name:
                 self.log(f"命中预定义SQL规则: id={rule_id or '-'} name={rule_name or '-'}")
-            for source_id in data_sources:
-                resolved_sql = self._build_custom_sql(
-                    source_id=source_id,
-                    intent=intent,
-                    query_plan=query_plan,
-                    conditions=conditions,
-                    extracted_fields=extracted_fields,
-                    calc_rule=calc_rule,
-                    custom_sql=custom_sql,
-                )
-                dsl_results[source_id] = {
-                    "sparql": "# 使用垂直指标预定义SQL，跳过SPARQL生成",
-                    "sql": resolved_sql,
-                }
-                self.log(f"[{source_id}] SQL(knowledge):\n{resolved_sql}")
-            self.log(f"DSL 生成完成: {len(dsl_results)}个数据源")
+            resolved_sql = self._build_custom_sql(
+                source_id=source_id,
+                intent=intent,
+                query_plan=query_plan,
+                conditions=conditions,
+                extracted_fields=extracted_fields,
+                calc_rule=calc_rule,
+                custom_sql=custom_sql,
+            )
+            dsl_results[source_id] = {
+                "sparql": "# 使用垂直指标预定义SQL，跳过SPARQL生成",
+                "sql": resolved_sql,
+            }
+            self.log(f"[{source_id}] SQL(knowledge):\\n{resolved_sql}")
+            self.log("DSL 生成完成: 1个数据源")
             return {**input_data, "dsl_query": dsl_results}
 
-        for source_id in data_sources:
-            effective_fields = extracted_fields
-            effective_calc_rule = calc_rule
-            if isinstance(query_spec, dict) and query_spec:
-                effective_fields = self._merge_fields_for_query_spec(query_plan, extracted_fields, query_spec)
-                effective_calc_rule = self._calc_rule_from_query_spec(query_spec, calc_rule)
+        effective_fields = extracted_fields
+        effective_calc_rule = calc_rule
+        if isinstance(query_spec, dict) and query_spec:
+            effective_fields = self._merge_fields_for_query_spec(query_plan, extracted_fields, query_spec)
+            effective_calc_rule = self._calc_rule_from_query_spec(query_spec, calc_rule)
 
-            sparql = self._generate_sparql(intent, query_plan, conditions, effective_fields, effective_calc_rule)
-            sql = self._generate_sql(source_id, query_plan, conditions, effective_fields, effective_calc_rule)
-            dsl_results[source_id] = {"sparql": sparql, "sql": sql}
-            self.log(f"[{source_id}] SQL:\n{sql}")
+        sparql = self._generate_sparql(intent, query_plan, conditions, effective_fields, effective_calc_rule)
+        sql = self._generate_sql(source_id, query_plan, conditions, effective_fields, effective_calc_rule)
+        dsl_results[source_id] = {"sparql": sparql, "sql": sql}
+        self.log(f"[{source_id}] SQL:\\n{sql}")
 
-        self.log(f"DSL 生成完成: {len(dsl_results)}个数据源")
+        self.log("DSL 生成完成: 1个数据源")
         return {**input_data, "dsl_query": dsl_results}
 
     def _generate_sparql(self, intent, query_plan, conditions, fields, calc_rule):
@@ -151,20 +149,24 @@ class DSLQueryAgent(BaseAgent):
 
             prev_entity = entities[index - 1]["name"]
             prev_alias = table_aliases[prev_entity]
-            join_on, join_meta = self._find_join_key(source_id, prev_entity, entity_name)
+            join_on_pairs, join_meta = self._find_join_key(source_id, prev_entity, entity_name)
             join_type = join_type_map.get((str(prev_entity).upper(), str(entity_name).upper()), "inner")
             join_keyword = "LEFT JOIN" if join_type == "left" else "JOIN"
-            if join_on:
+            if join_on_pairs:
+                first_left_actual, first_right_actual = join_on_pairs[0]
                 join_pairs.append(
                     {
                         "left_entity": str(prev_entity).upper(),
                         "right_entity": str(entity_name).upper(),
                         "right_alias": alias,
-                        "left_actual": str(join_on[0]),
-                        "right_actual": str(join_on[1]),
+                        "left_actual": str(first_left_actual),
+                        "right_actual": str(first_right_actual),
                     }
                 )
-                on_parts = [f"{prev_alias}.{join_on[0]} = {alias}.{join_on[1]}"]
+                on_parts = [
+                    f"{prev_alias}.{left_actual} = {alias}.{right_actual}"
+                    for left_actual, right_actual in join_on_pairs
+                ]
                 if join_type == "left":
                     for cond_index, condition in enumerate(conditions):
                         if cond_index in pushed_to_on:
@@ -181,7 +183,7 @@ class DSLQueryAgent(BaseAgent):
                             on_parts.append(sql_condition)
                             pushed_to_on.add(cond_index)
                             self.log(
-                                f"[{source_id}] LEFT JOIN ON下沉条件: "
+                                f"[{source_id}] LEFT JOIN ON涓嬫矇鏉′欢: "
                                 f"{entity_name}.{field} {op} {value}"
                             )
                 join_parts.append(f"{join_keyword} {table_name} {alias} ON {' AND '.join(on_parts)}")
@@ -192,7 +194,7 @@ class DSLQueryAgent(BaseAgent):
                         f"{entity_name}.{join_meta['right_onto']}({join_meta['right_actual']}) "
                         f"??={join_meta['source']}"
                         )
-                self.log(f"[{source_id}] JOIN类型: {prev_entity} -> {entity_name} = {join_type.upper()}")
+                self.log(f"[{source_id}] JOIN绫诲瀷: {prev_entity} -> {entity_name} = {join_type.upper()}")
             else:
                 self.log(f"[{source_id}] JOIN??: {prev_entity} -> {entity_name} ?????????????")
                 from_parts.append(f"{table_name} {alias}")
@@ -465,7 +467,7 @@ class DSLQueryAgent(BaseAgent):
         calc_params["group_count_target_sql"] = f"{alias}.{inferred_actual}"
         calc_params["group_count_distinct"] = True
         self.log(
-            f"[{source_id}] group_count计数目标推断: "
+            f"[{source_id}] group_count璁℃暟鐩爣鎺ㄦ柇: "
             f"{selected_entity}.{inferred_actual} (distinct)"
         )
 
@@ -697,8 +699,8 @@ class DSLQueryAgent(BaseAgent):
                     true_values = ["\u662f", "1", "true", "TRUE", "Y", "y", "yes", "YES"]
                 else:
                     self.log(
-                        f"rate字段 {target.get('ontology_field', '')} 未指定真值集合，"
-                        "当前使用默认真值 ['是']"
+                        f"rate瀛楁 {target.get('ontology_field', '')} 鏈寚瀹氱湡鍊奸泦鍚堬紝"
+                        "褰撳墠浣跨敤榛樿鐪熷€?['鏄?]"
                     )
                     true_values = ["\u662f"]
 
@@ -979,17 +981,28 @@ class DSLQueryAgent(BaseAgent):
         return str(last).strip()
 
     def _find_join_key(self, source_id, left_entity, right_entity):
-        join_fields = self.ontology.resolve_join_fields(left_entity, right_entity)
-        if join_fields:
-            left_onto, right_onto = join_fields
-            left_actual = self.mapping.ontology_field_to_actual(source_id, left_entity, left_onto) or left_onto
-            right_actual = self.mapping.ontology_field_to_actual(source_id, right_entity, right_onto) or right_onto
-            return (left_actual, right_actual), {
+        join_field_pairs = self.ontology.resolve_join_field_pairs(left_entity, right_entity)
+        if join_field_pairs:
+            left_onto_fields = []
+            right_onto_fields = []
+            actual_pairs = []
+            left_actual_fields = []
+            right_actual_fields = []
+            for left_onto, right_onto in join_field_pairs:
+                left_actual = self.mapping.ontology_field_to_actual(source_id, left_entity, left_onto) or left_onto
+                right_actual = self.mapping.ontology_field_to_actual(source_id, right_entity, right_onto) or right_onto
+                left_onto_fields.append(left_onto)
+                right_onto_fields.append(right_onto)
+                left_actual_fields.append(left_actual)
+                right_actual_fields.append(right_actual)
+                actual_pairs.append((left_actual, right_actual))
+
+            return actual_pairs, {
                 "source": "relation_config",
-                "left_onto": left_onto,
-                "right_onto": right_onto,
-                "left_actual": left_actual,
-                "right_actual": right_actual,
+                "left_onto": ",".join(left_onto_fields),
+                "right_onto": ",".join(right_onto_fields),
+                "left_actual": ",".join(left_actual_fields),
+                "right_actual": ",".join(right_actual_fields),
             }
 
         left_mapping = self.mapping.get_field_mapping(source_id, left_entity)
@@ -998,7 +1011,7 @@ class DSLQueryAgent(BaseAgent):
             if right_entity.lower() in left_onto.lower() or left_onto.endswith("_id"):
                 for right_onto, right_actual in right_mapping.items():
                     if right_onto == left_onto or right_actual == left_actual:
-                        return (left_actual, right_actual), {
+                        return [(left_actual, right_actual)], {
                             "source": "fallback_guess",
                             "left_onto": left_onto,
                             "right_onto": right_onto,
@@ -1008,7 +1021,7 @@ class DSLQueryAgent(BaseAgent):
         for left_onto, left_actual in left_mapping.items():
             for right_onto, right_actual in right_mapping.items():
                 if left_onto == right_onto and left_onto.endswith("_id"):
-                    return (left_actual, right_actual), {
+                    return [(left_actual, right_actual)], {
                         "source": "fallback_guess",
                         "left_onto": left_onto,
                         "right_onto": right_onto,
@@ -1020,7 +1033,7 @@ class DSLQueryAgent(BaseAgent):
     def _build_custom_sql(self, source_id, intent, query_plan, conditions, extracted_fields, calc_rule, custom_sql: str) -> str:
         parsed = self._parse_select_sql(custom_sql)
         if not parsed:
-            self.log(f"[{source_id}] 预定义SQL解析失败，按原SQL执行")
+            self.log(f"[{source_id}] 棰勫畾涔塖QL瑙ｆ瀽澶辫触锛屾寜鍘烻QL鎵ц")
             return custom_sql
 
         calc_params = calc_rule.get("params", {}) if isinstance(calc_rule, dict) else {}
@@ -1051,7 +1064,7 @@ class DSLQueryAgent(BaseAgent):
         except Exception:
             limit = None
 
-        # extracted_fields 可能包含维度字段，补入 group_by
+        # extracted_fields 鍙兘鍖呭惈缁村害瀛楁锛岃ˉ鍏?group_by
         for field in extracted_fields or []:
             field_name = str(field.get("field", "")).strip()
             if field_name and field_name not in group_by:
@@ -1073,7 +1086,7 @@ class DSLQueryAgent(BaseAgent):
         for group_field in group_by:
             actual = self.mapping.ontology_field_to_actual(source_id, primary_entity, group_field)
             if not actual:
-                self.log(f"[{source_id}] 忽略未映射分组字段: {primary_entity}.{group_field}")
+                self.log(f"[{source_id}] 蹇界暐鏈槧灏勫垎缁勫瓧娈? {primary_entity}.{group_field}")
                 continue
             column = f"{primary_alias}.{actual}" if primary_alias else actual
             group_selects.append(f"{column} AS {group_field}")
@@ -1087,7 +1100,7 @@ class DSLQueryAgent(BaseAgent):
             field = cond.get("field", "")
             actual = self.mapping.ontology_field_to_actual(source_id, primary_entity, field)
             if not actual:
-                self.log(f"[{source_id}] 忽略未映射条件字段: {primary_entity}.{field}")
+                self.log(f"[{source_id}] 蹇界暐鏈槧灏勬潯浠跺瓧娈? {primary_entity}.{field}")
                 continue
             sql_cond = self._build_where_condition(primary_alias or "", actual, cond.get("op", "="), cond.get("value", ""))
             if sql_cond:
@@ -1184,7 +1197,7 @@ class DSLQueryAgent(BaseAgent):
 
         actual = self.mapping.ontology_field_to_actual(source_id, entity_name, ob)
         if not actual:
-            self.log(f"[{source_id}] 忽略未映射排序字段: {entity_name}.{ob}")
+            self.log(f"[{source_id}] 蹇界暐鏈槧灏勬帓搴忓瓧娈? {entity_name}.{ob}")
             return ""
         column = f"{alias}.{actual}" if alias else actual
         return f"ORDER BY {column} {direction}"

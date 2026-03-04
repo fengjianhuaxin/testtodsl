@@ -15,7 +15,6 @@ class PromptManager:
 你掌握的本体知识如下：
 $ontology_desc
 
-可用数据源: $available_sources
 $knowledge_block
 
 请严格返回 JSON（不要输出解释文字），格式如下：
@@ -35,8 +34,7 @@ $knowledge_block
     "order_by": "属性英文名或ENTITY.FIELD或__metric__",
     "order_dir": "asc或desc",
     "limit": 10
-  },
-  "data_source": "all或具体数据源ID"
+  }
 }
 
 规则：
@@ -44,10 +42,9 @@ $knowledge_block
 2) “最高/最大” => order_by=__metric__, order_dir=desc, limit=1。
 3) “最低/最小” => order_by=__metric__, order_dir=asc, limit=1。
 4) 如果是 sum/avg/max/min 且同时询问“各XX分别”，优先按维度字段分组，不要仅返回全局汇总。
-5) data_source 除非用户明确指定，否则一律为 all。
-6) 必须输出 primary_entity。
-7) 多本体时，primary_entity 必须来自 target_entities，并代表问题的主语义主体。
-8) 单本体时，primary_entity 必须等于 target_entities[0]。""",
+5) 必须输出 primary_entity。
+6) 多本体时，primary_entity 必须来自 target_entities，并代表问题的主语义主体。
+7) 单本体时，primary_entity 必须等于 target_entities[0]。""",
         },
         "metric_hint_system": {
             "name": "指标规则补充提示词",

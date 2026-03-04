@@ -14,7 +14,8 @@ from import_xksx_ontology_mapping import import_ontology_mapping
 ontology_bp = Blueprint("ontology", __name__)
 
 ONTOLOGY_FILE = os.path.join(config.ONTOLOGY_DIR, "student_mgmt_ontology.json")
-MAPPING_FILE = os.path.join(config.MAPPING_DIR, "xksx_mapping.json")
+DEFAULT_SOURCE_ID = config.get_default_source_id()
+MAPPING_FILE = os.path.join(config.MAPPING_DIR, f"{DEFAULT_SOURCE_ID}_mapping.json")
 
 
 def _load():
@@ -87,9 +88,9 @@ def _normalize_properties(properties):
 
 
 def _normalize_relation(data, onto):
-    """归一化并校验关系配置"""
+    """Normalize and validate relation config, supports composite join keys."""
     if not isinstance(data, dict):
-        raise ValueError("关系参数格式错误")
+        raise ValueError("????????")
 
     entities = onto.get("entities", {})
 
@@ -97,34 +98,51 @@ def _normalize_relation(data, onto):
     to_entity = str(data.get("to", "")).strip()
     rel_type = str(data.get("type", "related")).strip() or "related"
     label = str(data.get("label", "")).strip()
-    from_field = str(data.get("from_field", "")).strip()
-    to_field = str(data.get("to_field", "")).strip()
+    from_field_raw = data.get("from_field", "")
+    to_field_raw = data.get("to_field", "")
 
     if not from_entity or not to_entity:
-        raise ValueError("关系的源实体和目标实体不能为空")
+        raise ValueError("???????????????")
     if from_entity not in entities:
-        raise ValueError(f"源实体不存在: {from_entity}")
+        raise ValueError(f"??????: {from_entity}")
     if to_entity not in entities:
-        raise ValueError(f"目标实体不存在: {to_entity}")
+        raise ValueError(f"???????: {to_entity}")
 
     from_props = entities.get(from_entity, {}).get("properties", {})
     to_props = entities.get(to_entity, {}).get("properties", {})
 
-    if from_field and from_field not in from_props:
-        raise ValueError(f"源关联字段不存在: {from_entity}.{from_field}")
-    if to_field and to_field not in to_props:
-        raise ValueError(f"目标关联字段不存在: {to_entity}.{to_field}")
+    def _split_fields(raw_value):
+        if isinstance(raw_value, list):
+            values = raw_value
+        else:
+            text = str(raw_value or "").strip()
+            if not text:
+                return []
+            values = text.split(",")
+        return [str(v).strip() for v in values if str(v).strip()]
 
-    if (from_field and not to_field) or (to_field and not from_field):
-        raise ValueError("关联字段需要同时配置源字段和目标字段")
+    from_fields = _split_fields(from_field_raw)
+    to_fields = _split_fields(to_field_raw)
+
+    if (from_fields and not to_fields) or (to_fields and not from_fields):
+        raise ValueError("??????????????????")
+    if from_fields and len(from_fields) != len(to_fields):
+        raise ValueError("?????????")
+
+    for field in from_fields:
+        if field not in from_props:
+            raise ValueError(f"????????: {from_entity}.{field}")
+    for field in to_fields:
+        if field not in to_props:
+            raise ValueError(f"?????????: {to_entity}.{field}")
 
     return {
         "from": from_entity,
         "to": to_entity,
         "type": rel_type,
         "label": label,
-        "from_field": from_field,
-        "to_field": to_field
+        "from_field": ",".join(from_fields),
+        "to_field": ",".join(to_fields),
     }
 
 
@@ -182,9 +200,9 @@ def import_ontology_from_xlsx():
             excel_path=excel_path,
             ontology_out=ONTOLOGY_FILE,
             mapping_out=MAPPING_FILE,
-            source_dir=config.DATA_SOURCES.get("xksx", ""),
-            source_id="xksx",
-            source_name="xksx",
+            source_dir=config.DATA_SOURCES.get(DEFAULT_SOURCE_ID, ""),
+            source_id=DEFAULT_SOURCE_ID,
+            source_name=DEFAULT_SOURCE_ID,
         )
     except Exception as error:
         return jsonify({"error": f"导入失败: {error}"}), 500
@@ -203,7 +221,6 @@ def get_entity(name):
 
 @ontology_bp.route("/ontology/entities", methods=["POST"])
 def add_entity():
-    from web.app import admin_required as _
     data = request.get_json()
     name = data.get("name")
     if not name:

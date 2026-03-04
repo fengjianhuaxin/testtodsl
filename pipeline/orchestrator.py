@@ -60,7 +60,7 @@ class Orchestrator:
             ("12_图表报告", ChartAgent(self.output_dir)),
         ]
 
-    def run(self, question: str, source: str = None) -> dict:
+    def run(self, question: str) -> dict:
         """Run the whole pipeline for one question."""
         if hasattr(self.llm, "reset_traces"):
             self.llm.reset_traces()
@@ -74,11 +74,9 @@ class Orchestrator:
         base_pipeline_data = {
             "question": normalized_question,
             "raw_question_input": question,
-            "available_sources": config.DATA_SOURCES,
+            "source_id": config.get_default_source_id(),
             "global_rewrite_hits": rewrite_hits,
         }
-        if source:
-            base_pipeline_data["preferred_source"] = source
 
         intermediates = {"raw_input": question}
         if rewrite_hits:

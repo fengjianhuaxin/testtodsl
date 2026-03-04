@@ -18,7 +18,7 @@ const API = {
     me: () => API.request('/api/me'),
 
     // 问答
-    chat: (question, source) => API.request('/api/chat', { method: 'POST', body: JSON.stringify({ question, source }) }),
+    chat: (question) => API.request('/api/chat', { method: 'POST', body: JSON.stringify({ question }) }),
     chatHistory: () => API.request('/api/chat/history'),
     chatDetail: (id) => API.request(`/api/chat/history/${id}`),
 
@@ -40,20 +40,19 @@ const API = {
     importOntologyFromExcel: (data) => API.request('/api/ontology/import-xlsx', { method: 'POST', body: JSON.stringify(data || {}) }),
 
     // 数据表
-    getSources: () => API.request('/api/tables/sources'),
-    getTables: (sourceId) => API.request(`/api/tables/${sourceId}`),
+    getTables: () => API.request('/api/tables'),
 
     // 映射
-    getMapping: (sourceId) => API.request(`/api/mapping/${sourceId}`),
-    updateEntityMapping: (sourceId, entity, data) => API.request(`/api/mapping/${sourceId}/entity/${entity}`, { method: 'PUT', body: JSON.stringify(data) }),
-    deleteEntityMapping: (sourceId, entity) => API.request(`/api/mapping/${sourceId}/entity/${entity}`, { method: 'DELETE' }),
+    getMapping: () => API.request('/api/mapping'),
+    updateEntityMapping: (entity, data) => API.request(`/api/mapping/entity/${entity}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteEntityMapping: (entity) => API.request(`/api/mapping/entity/${entity}`, { method: 'DELETE' }),
     llmAnalyze: (data) => API.request('/api/mapping/llm-analyze', { method: 'POST', body: JSON.stringify(data) }),
 
     // 数据
-    getData: (sourceId, entity, page, pageSize, search) => API.request(`/api/data/${sourceId}/${entity}?page=${page}&page_size=${pageSize}&search=${search || ''}`),
-    addData: (sourceId, entity, data) => API.request(`/api/data/${sourceId}/${entity}`, { method: 'POST', body: JSON.stringify(data) }),
-    updateData: (sourceId, entity, idx, data) => API.request(`/api/data/${sourceId}/${entity}/${idx}`, { method: 'PUT', body: JSON.stringify(data) }),
-    deleteData: (sourceId, entity, idx) => API.request(`/api/data/${sourceId}/${entity}/${idx}`, { method: 'DELETE' }),
+    getData: (entity, page, pageSize, search) => API.request(`/api/data/${entity}?page=${page}&page_size=${pageSize}&search=${search || ''}`),
+    addData: (entity, data) => API.request(`/api/data/${entity}`, { method: 'POST', body: JSON.stringify(data) }),
+    updateData: (entity, idx, data) => API.request(`/api/data/${entity}/${idx}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteData: (entity, idx) => API.request(`/api/data/${entity}/${idx}`, { method: 'DELETE' }),
 
     // DSL 日志
     getDSLLogs: (search) => API.request(`/api/dsl-logs?search=${search || ''}`),

@@ -54,6 +54,13 @@ def _get_source_tables(source_id):
     return tables
 
 
+def _resolve_source_id(source_id: str | None = None) -> str:
+    sid = str(source_id or "").strip()
+    if sid:
+        return sid
+    return config.get_default_source_id()
+
+
 @tables_bp.route("/tables/sources")
 def get_sources():
     """获取所有数据源"""
@@ -69,8 +76,15 @@ def get_sources():
     return jsonify(sources)
 
 
+@tables_bp.route("/tables")
+def get_tables_default():
+    source_id = _resolve_source_id()
+    tables = _get_source_tables(source_id)
+    return jsonify(tables)
+
+
 @tables_bp.route("/tables/<source_id>")
 def get_tables(source_id):
     """获取某数据源的所有表结构"""
-    tables = _get_source_tables(source_id)
+    tables = _get_source_tables(_resolve_source_id(source_id))
     return jsonify(tables)

@@ -1,5 +1,6 @@
 ﻿"""Dispatch agent - decide execution plan from clarified intent."""
 
+import config
 from agents.base_agent import BaseAgent
 
 
@@ -17,19 +18,13 @@ class DispatchAgent(BaseAgent):
 
         calc_type = intent.get("calc_type", "detail")
         target_entities = intent.get("target_entities", [])
-        data_source = intent.get("data_source", "all")
-
-        if input_data.get("preferred_source"):
-            data_source = input_data["preferred_source"]
-
         needs_join = len(target_entities) > 1
         needs_calc = calc_type not in ("detail",)
-        all_sources = list(input_data.get("available_sources", {}).keys())
-        needs_multi_source = data_source == "all"
+        source_id = str(input_data.get("source_id", "")).strip() or config.get_default_source_id()
 
         task_plan = {
             "action": "execute",
-            "data_sources": all_sources if needs_multi_source else [data_source],
+            "source_id": source_id,
             "needs_join": needs_join,
             "needs_calc": needs_calc,
             "pipeline": [
@@ -47,7 +42,6 @@ class DispatchAgent(BaseAgent):
         }
 
         self.log(
-            f"任务分配完成: 数据源={task_plan['data_sources']}, "
-            f"需要关联={needs_join}, 需要计算={needs_calc}"
+            f"任务分配完成: 需要关联={needs_join}, 需要计算={needs_calc}"
         )
         return {**input_data, "dispatch": task_plan}

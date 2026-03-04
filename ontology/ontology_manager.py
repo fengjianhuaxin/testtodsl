@@ -140,36 +140,71 @@ class OntologyManager:
         return canonical_field, _map_one(value), changed
 
     def get_relations_for(self, entity_name: str) -> list:
-        """获取与指定实体相关的所有关系"""
+        """??????????????"""
         related = []
         for rel in self.relations:
             if rel["from"] == entity_name or rel["to"] == entity_name:
                 related.append(rel)
         return related
 
+    @staticmethod
+    def _normalize_join_field_list(raw_value) -> list[str]:
+        if isinstance(raw_value, list):
+            values = raw_value
+        else:
+            text = str(raw_value or "").strip()
+            if not text:
+                return []
+            values = text.split(",")
+
+        result = []
+        for item in values:
+            name = str(item or "").strip()
+            if name:
+                result.append(name)
+        return result
+
+    @classmethod
+    def _extract_relation_join_pairs(cls, relation: dict, reverse: bool = False) -> list[tuple[str, str]]:
+        from_fields = cls._normalize_join_field_list(relation.get("from_field"))
+        to_fields = cls._normalize_join_field_list(relation.get("to_field"))
+        if not from_fields or not to_fields:
+            return []
+        if len(from_fields) != len(to_fields):
+            return []
+
+        if reverse:
+            return [(right, left) for left, right in zip(from_fields, to_fields)]
+        return list(zip(from_fields, to_fields))
+
+    def resolve_join_field_pairs(self, left_entity: str, right_entity: str) -> list[tuple[str, str]] | None:
+        """????????????????????"""
+        for rel in self.relations:
+            from_entity = rel.get("from")
+            to_entity = rel.get("to")
+
+            if from_entity == left_entity and to_entity == right_entity:
+                pairs = self._extract_relation_join_pairs(rel, reverse=False)
+                if pairs:
+                    return pairs
+            elif from_entity == right_entity and to_entity == left_entity:
+                pairs = self._extract_relation_join_pairs(rel, reverse=True)
+                if pairs:
+                    return pairs
+        return None
+
     def resolve_join_fields(self, left_entity: str, right_entity: str) -> tuple[str, str] | None:
-        """解析两个实体关联时应使用的本体字段 (left_field, right_field)"""
+        """?????????????????(left_field, right_field)"""
         def _find_key_field(props: dict) -> str | None:
             for pname, pdef in props.items():
                 if pdef.get("is_key"):
                     return pname
             return None
 
-        # 1) 优先使用 relation 显式配置
-        for rel in self.relations:
-            from_entity = rel.get("from")
-            to_entity = rel.get("to")
-            from_field = rel.get("from_field")
-            to_field = rel.get("to_field")
+        relation_pairs = self.resolve_join_field_pairs(left_entity, right_entity)
+        if relation_pairs:
+            return relation_pairs[0]
 
-            if from_entity == left_entity and to_entity == right_entity:
-                if from_field and to_field:
-                    return from_field, to_field
-            elif from_entity == right_entity and to_entity == left_entity:
-                if from_field and to_field:
-                    return to_field, from_field
-
-        # 2) 兼容旧配置: 通过外键定义推断
         left_props = self.get_entity_properties(left_entity)
         right_props = self.get_entity_properties(right_entity)
         left_key = _find_key_field(left_props)
@@ -189,7 +224,6 @@ class OntologyManager:
                 if left_key:
                     return left_key, prop_name
 
-        # 3) 最后兜底: 同名 id 字段
         shared_ids = [
             field_name for field_name in left_props.keys()
             if field_name in right_props and str(field_name).endswith("_id")

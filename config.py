@@ -45,6 +45,20 @@ DATA_SOURCES = {
 }
 
 
+def get_default_source_id() -> str:
+    """Return the only/default source id for single-source mode."""
+    if not DATA_SOURCES:
+        return ""
+    return next(iter(DATA_SOURCES.keys()))
+
+
+def get_default_source_dir() -> str:
+    source_id = get_default_source_id()
+    if not source_id:
+        return ""
+    return DATA_SOURCES.get(source_id, "")
+
+
 def load_runtime_db_config() -> dict:
     """Load runtime DB settings from `data/db_config.json` if present."""
     result = {

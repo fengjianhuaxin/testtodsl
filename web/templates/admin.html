@@ -82,19 +82,11 @@
                 <div class="panel-header">
                     <div>
                         <div class="panel-title">数据表管理</div>
-                        <div class="panel-subtitle">查看各数据源的表结构</div>
+                        <div class="panel-subtitle">查看当前数据表结构</div>
                     </div>
                 </div>
-                <div class="two-col">
-                    <div class="col-scroll">
-                        <div class="card-title">数据源</div>
-                        <div id="sourceList"></div>
-                    </div>
-                    <div class="col-scroll">
-                        <div id="tableStructure">
-                            <div style="padding:20px;color:var(--text-muted)">→ 选择数据源查看表结构</div>
-                        </div>
-                    </div>
+                <div id="tableStructure">
+                    <div style="padding:20px;color:var(--text-muted)">数据表结构加载中...</div>
                 </div>
             </div>
 
@@ -109,14 +101,6 @@
                     </div>
                 </div>
                 <div id="mappingContent">
-                    <div class="form-row" style="display:flex;gap:12px;align-items:flex-end">
-                        <div style="flex:1">
-                            <label>数据源</label>
-                            <select class="form-input form-select" id="mappingSourceSelect" onchange="loadMappingForSource()">
-                                <option value="">请选择</option>
-                            </select>
-                        </div>
-                    </div>
                     <div id="mappingList"></div>
                 </div>
             </div>
@@ -129,10 +113,6 @@
                     </div>
                 </div>
                 <div style="display:flex;gap:12px;margin-bottom:16px">
-                    <div>
-                        <label style="font-size:12px;color:var(--text-muted)">数据源</label>
-                        <select class="form-input form-select" id="dataSourceSelect" onchange="loadDataEntities()" style="width:180px"></select>
-                    </div>
                     <div>
                         <label style="font-size:12px;color:var(--text-muted)">实体/表</label>
                         <select class="form-input form-select" id="dataEntitySelect" onchange="loadDataTable()" style="width:180px"></select>

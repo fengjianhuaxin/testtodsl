@@ -14,6 +14,7 @@ import config
 
 knowledge_bp = Blueprint("knowledge", __name__)
 KNOWLEDGE_FILE = config.KNOWLEDGE_FILE
+DEFAULT_SOURCE_ID = config.get_default_source_id()
 
 
 def _load():
@@ -308,7 +309,7 @@ def add_sql_rule():
             "name": name,
             "keywords": _normalize_keywords(payload.get("keywords", [])),
             "target_entities": _normalize_target_entities(payload.get("target_entities", [])),
-            "data_source": str(payload.get("data_source", "xksx")).strip() or "xksx",
+            "data_source": str(payload.get("data_source", DEFAULT_SOURCE_ID)).strip() or DEFAULT_SOURCE_ID,
             "sql": sql,
             "priority": priority,
             "description": str(payload.get("description", "")).strip(),
@@ -348,7 +349,7 @@ def update_sql_rule(item_id):
     if "target_entities" in payload:
         item["target_entities"] = _normalize_target_entities(payload.get("target_entities"))
     if "data_source" in payload:
-        item["data_source"] = str(payload.get("data_source", "xksx")).strip() or "xksx"
+        item["data_source"] = str(payload.get("data_source", DEFAULT_SOURCE_ID)).strip() or DEFAULT_SOURCE_ID
     if "priority" in payload:
         try:
             item["priority"] = int(payload.get("priority", item.get("priority", 100)))

@@ -1,9 +1,18 @@
-"""Import ontology and rebuild xksx mapping from Excel (ontology-first)."""
+﻿"""Import ontology/mapping from Excel.
+
+Supported Excel modes:
+1) Table-structure mode (preferred):
+   columns = 中文表名, 英文表名, 中文字段名, 英文字段名, 数据类型, 备注
+   -> generates entities + table mappings + empty data table files.
+2) Legacy two-sheet mode:
+   sheet1(entity/property), sheet2(relations), then tries to adapt to existing source tables.
+"""
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import re
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 from typing import Any
@@ -21,6 +30,17 @@ class TableMeta:
     upper_to_actual: dict[str, str]
 
 
+TABLE_STRUCTURE_FIELDS = ("table_cn", "table_en", "field_cn", "field_en", "data_type", "remark")
+TABLE_HEADER_ALIAS = {
+    "中文表名": "table_cn",
+    "英文表名": "table_en",
+    "中文字段名": "field_cn",
+    "英文字段名": "field_en",
+    "数据类型": "data_type",
+    "备注": "remark",
+}
+
+
 def _clean_text(value: Any) -> str:
     if value is None:
         return ""
@@ -29,8 +49,25 @@ def _clean_text(value: Any) -> str:
     return str(value).strip()
 
 
+def _normalize_header(value: Any) -> str:
+    text = _clean_text(value)
+    return re.sub(r"\s+", "", text).lower()
+
+
+def _dedupe_keep_order(values: list[str]) -> list[str]:
+    result = []
+    seen = set()
+    for value in values:
+        text = _clean_text(value)
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
+
+
 def _infer_type(field_name: str) -> str:
-    upper = field_name.upper()
+    upper = str(field_name or "").upper()
     if any(token in upper for token in ("DATE", "TIME")):
         return "date"
     if any(
@@ -56,10 +93,285 @@ def _infer_type(field_name: str) -> str:
     return "string"
 
 
+def _map_data_type(raw_data_type: str, field_name: str) -> str:
+    text = str(raw_data_type or "").strip().lower()
+    if not text:
+        return _infer_type(field_name)
+
+    if any(token in text for token in ("date", "time", "year", "timestamp", "datetime")):
+        return "date"
+    if any(token in text for token in ("bool", "boolean", "bit")):
+        return "boolean"
+    if any(
+        token in text
+        for token in ("int", "integer", "number", "numeric", "decimal", "float", "double", "real", "money")
+    ):
+        return "number"
+    return "string"
+
+
+def _is_primary_key(remark: str) -> bool:
+    text = str(remark or "").strip().lower()
+    if not text:
+        return False
+    if "主键" in text:
+        return True
+    return bool(re.search(r"\bpk\b", text, flags=re.IGNORECASE))
+
+
+def _standardize_table_structure_frame(frame: pd.DataFrame) -> pd.DataFrame | None:
+    if frame is None or frame.empty:
+        return None
+
+    norm_to_actual = {_normalize_header(col): col for col in frame.columns}
+    normalized = pd.DataFrame()
+
+    # header-based mode
+    for cn_name, key in TABLE_HEADER_ALIAS.items():
+        norm = _normalize_header(cn_name)
+        if norm in norm_to_actual:
+            normalized[key] = frame[norm_to_actual[norm]]
+
+    # positional fallback (requires at least 6 cols to avoid mis-detecting legacy sheets)
+    if len(normalized.columns) < 4:
+        if frame.shape[1] < 6:
+            return None
+        subset = frame.iloc[:, :6].copy()
+        subset.columns = list(TABLE_STRUCTURE_FIELDS)
+        normalized = subset
+    else:
+        for field in TABLE_STRUCTURE_FIELDS:
+            if field not in normalized.columns:
+                normalized[field] = ""
+        normalized = normalized.loc[:, TABLE_STRUCTURE_FIELDS]
+
+    for col in TABLE_STRUCTURE_FIELDS:
+        normalized[col] = normalized[col].map(_clean_text)
+
+    normalized["table_cn"] = normalized["table_cn"].replace("", pd.NA).ffill().fillna("")
+    normalized["table_en"] = normalized["table_en"].replace("", pd.NA).ffill().fillna("")
+
+    normalized = normalized[
+        (normalized["table_en"] != "")
+        & (normalized["field_en"] != "")
+    ].copy()
+    if normalized.empty:
+        return None
+
+    # avoid false positives by requiring mostly identifier-like english names
+    table_ok = normalized["table_en"].map(lambda x: bool(re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", str(x))))
+    field_ok = normalized["field_en"].map(lambda x: bool(re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", str(x))))
+    if table_ok.mean() < 0.6 or field_ok.mean() < 0.6:
+        return None
+
+    return normalized
+
+
+def _load_table_structure_book(excel_file: pd.ExcelFile) -> tuple[str, OrderedDict[str, dict[str, Any]]] | None:
+    for sheet_name in excel_file.sheet_names:
+        frame = excel_file.parse(sheet_name)
+        normalized = _standardize_table_structure_frame(frame)
+        if normalized is None:
+            continue
+
+        tables: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        for _, row in normalized.iterrows():
+            table_cn = _clean_text(row.get("table_cn"))
+            table_en = _clean_text(row.get("table_en"))
+            field_cn = _clean_text(row.get("field_cn"))
+            field_en = _clean_text(row.get("field_en"))
+            raw_data_type = _clean_text(row.get("data_type"))
+            remark = _clean_text(row.get("remark"))
+            if not table_en or not field_en:
+                continue
+
+            entity_key = table_en.upper()
+            field_key = field_en.upper()
+            if entity_key not in tables:
+                tables[entity_key] = {
+                    "label": table_cn or table_en,
+                    "table_name": table_en,
+                    "fields": OrderedDict(),
+                }
+
+            field_info = tables[entity_key]["fields"].get(field_key)
+            if not field_info:
+                tables[entity_key]["fields"][field_key] = {
+                    "actual_name": field_en,
+                    "label": field_cn or field_en,
+                    "raw_type": raw_data_type,
+                    "type": _map_data_type(raw_data_type, field_en),
+                    "remark": remark,
+                    "is_key": _is_primary_key(remark),
+                }
+                continue
+
+            # fill missing values on duplicates
+            if not field_info.get("label") and field_cn:
+                field_info["label"] = field_cn
+            if not field_info.get("raw_type") and raw_data_type:
+                field_info["raw_type"] = raw_data_type
+                field_info["type"] = _map_data_type(raw_data_type, field_en)
+            if (not field_info.get("remark")) and remark:
+                field_info["remark"] = remark
+            if _is_primary_key(remark):
+                field_info["is_key"] = True
+
+        if tables:
+            return sheet_name, tables
+    return None
+
+
+def _build_from_table_structure(
+    tables: OrderedDict[str, dict[str, Any]],
+    *,
+    excel_path: str,
+    sheet_name: str,
+    source_id: str,
+    source_name: str,
+) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], dict[str, int]]:
+    ontology_entities: OrderedDict[str, dict[str, Any]] = OrderedDict()
+    table_mappings: OrderedDict[str, dict[str, Any]] = OrderedDict()
+    table_specs: list[dict[str, Any]] = []
+
+    field_count = 0
+    primary_key_field_count = 0
+
+    for entity_key, table_info in tables.items():
+        table_name = str(table_info.get("table_name", "")).strip()
+        entity_label = str(table_info.get("label", "")).strip() or table_name or entity_key
+        fields = table_info.get("fields", {})
+        if not table_name or not isinstance(fields, OrderedDict) or not fields:
+            continue
+
+        properties = OrderedDict()
+        field_mappings = OrderedDict()
+        actual_columns = []
+
+        for property_name, field_info in fields.items():
+            actual_name = _clean_text(field_info.get("actual_name"))
+            if not actual_name:
+                continue
+            aliases = _dedupe_keep_order([actual_name, actual_name.lower(), actual_name.upper()])
+            prop_def = {
+                "aliases": aliases,
+                "label": _clean_text(field_info.get("label")) or property_name,
+                "type": _clean_text(field_info.get("type")) or "string",
+                "value_aliases": {},
+            }
+            if field_info.get("is_key"):
+                prop_def["is_key"] = True
+                primary_key_field_count += 1
+
+            properties[property_name] = prop_def
+            field_mappings[property_name] = actual_name
+            actual_columns.append(actual_name)
+            field_count += 1
+
+        if not properties:
+            continue
+
+        ontology_entities[entity_key] = {
+            "label": entity_label,
+            "description": f"Imported from {os.path.basename(excel_path)}::{sheet_name}",
+            "aliases": _dedupe_keep_order([table_name, entity_label]),
+            "properties": properties,
+        }
+        table_mappings[entity_key] = {
+            "table_name": table_name,
+            "file_name": f"{table_name}.xlsx",
+            "field_mappings": field_mappings,
+            "field_value_semantics": {},
+        }
+        table_specs.append(
+            {
+                "entity_key": entity_key,
+                "table_name": table_name,
+                "file_name": f"{table_name}.xlsx",
+                "columns": actual_columns,
+            }
+        )
+
+    relation_items = []
+    identity_join_priority = [
+        ("CERT_TYPE", "CERT_NO"),
+        ("CERT_NO",),
+    ]
+
+    entity_names = list(ontology_entities.keys())
+    for i in range(len(entity_names)):
+        for j in range(i + 1, len(entity_names)):
+            left_entity = entity_names[i]
+            right_entity = entity_names[j]
+            left_props = ontology_entities[left_entity].get("properties", {})
+            right_props = ontology_entities[right_entity].get("properties", {})
+
+            selected_fields: tuple[str, ...] | None = None
+            for candidate_fields in identity_join_priority:
+                if all(field in left_props and field in right_props for field in candidate_fields):
+                    selected_fields = candidate_fields
+                    break
+
+            if not selected_fields:
+                continue
+
+            relation_items.append(
+                {
+                    "from": left_entity,
+                    "to": right_entity,
+                    "type": "identity_match",
+                    "label": "证件关联",
+                    "from_field": ",".join(selected_fields),
+                    "to_field": ",".join(selected_fields),
+                }
+            )
+
+    ontology_json = {
+        "name": f"{source_id}_ontology",
+        "version": "1.0",
+        "description": f"Imported from {os.path.basename(excel_path)} (sheet={sheet_name})",
+        "entities": ontology_entities,
+        "relations": relation_items,
+    }
+
+    mapping_json = {
+        "source_name": source_name,
+        "source_id": source_id,
+        "description": f"Imported from {os.path.basename(excel_path)} (sheet={sheet_name})",
+        "table_mappings": table_mappings,
+    }
+
+    stats = {
+        "entity_count": len(ontology_entities),
+        "field_count": field_count,
+        "primary_key_field_count": primary_key_field_count,
+        "table_count": len(table_specs),
+        "relation_count": len(relation_items),
+    }
+    return ontology_json, mapping_json, table_specs, stats
+
+
+def _materialize_table_files(source_dir: str, table_specs: list[dict[str, Any]]) -> list[str]:
+    generated = []
+    if not source_dir:
+        return generated
+
+    os.makedirs(source_dir, exist_ok=True)
+    for spec in table_specs:
+        file_name = _clean_text(spec.get("file_name"))
+        columns = spec.get("columns", [])
+        if not file_name or not isinstance(columns, list) or not columns:
+            continue
+        file_path = os.path.join(source_dir, file_name)
+        pd.DataFrame(columns=columns).to_excel(file_path, index=False)
+        generated.append(file_path)
+    return generated
+
+
 def _load_entity_rows(entity_sheet_df: pd.DataFrame) -> OrderedDict[str, OrderedDict[str, dict[str, Any]]]:
     frame = entity_sheet_df.copy()
     if frame.shape[1] < 3:
-        raise ValueError("实体sheet至少需要3列：实体、属性中文名、属性英文名")
+        raise ValueError("Legacy sheet1 requires at least 3 columns.")
 
     frame = frame.iloc[:, :3].rename(
         columns={
@@ -274,7 +586,7 @@ def _build_ontology_and_mapping(
 
         ontology_entities[entity_key] = {
             "label": entity_cn,
-            "description": "Imported from Excel sheet1 (ontology-first)",
+            "description": "Imported from legacy Excel sheet1",
             "aliases": [entity_cn] if entity_key != entity_cn else [],
             "properties": property_defs,
         }
@@ -297,6 +609,7 @@ def _build_ontology_and_mapping(
             "table_name": matched_table.table_name,
             "file_name": matched_table.file_name,
             "field_mappings": field_mappings,
+            "field_value_semantics": {},
         }
 
     ontology_relations = []
@@ -345,15 +658,48 @@ def import_ontology_mapping(
     source_name: str = "xksx",
 ) -> dict[str, Any]:
     if not os.path.exists(excel_path):
-        raise FileNotFoundError(f"Excel文件不存在: {excel_path}")
+        raise FileNotFoundError(f"Excel file not found: {excel_path}")
 
     ontology_out = ontology_out or os.path.join(config.ONTOLOGY_DIR, "student_mgmt_ontology.json")
-    mapping_out = mapping_out or os.path.join(config.MAPPING_DIR, "xksx_mapping.json")
+    mapping_out = mapping_out or os.path.join(config.MAPPING_DIR, f"{source_id}_mapping.json")
     source_dir = source_dir if source_dir is not None else config.DATA_SOURCES.get(source_id, "")
 
     excel_file = pd.ExcelFile(excel_path)
+    table_structure_payload = _load_table_structure_book(excel_file)
+
+    # Mode A: table-structure import (preferred for current project)
+    if table_structure_payload is not None:
+        sheet_name, tables = table_structure_payload
+        ontology_json, mapping_json, table_specs, stats = _build_from_table_structure(
+            tables=tables,
+            excel_path=excel_path,
+            sheet_name=sheet_name,
+            source_id=source_id,
+            source_name=source_name,
+        )
+
+        os.makedirs(os.path.dirname(ontology_out), exist_ok=True)
+        os.makedirs(os.path.dirname(mapping_out), exist_ok=True)
+        with open(ontology_out, "w", encoding="utf-8") as ontology_file:
+            json.dump(ontology_json, ontology_file, ensure_ascii=False, indent=4)
+        with open(mapping_out, "w", encoding="utf-8") as mapping_file:
+            json.dump(mapping_json, mapping_file, ensure_ascii=False, indent=4)
+
+        generated_files = _materialize_table_files(source_dir, table_specs)
+        return {
+            "mode": "table_structure",
+            "excel_path": excel_path,
+            "sheet": sheet_name,
+            "ontology_out": ontology_out,
+            "mapping_out": mapping_out,
+            "source_dir": source_dir,
+            "generated_table_files": generated_files,
+            **stats,
+        }
+
+    # Mode B: legacy two-sheet import
     if len(excel_file.sheet_names) < 2:
-        raise ValueError("Excel至少需要2个sheet（sheet1实体属性、sheet2关系）")
+        raise ValueError("Excel format unsupported: expected table-structure sheet or legacy 2-sheet format.")
 
     entity_sheet_name = excel_file.sheet_names[0]
     relation_sheet_name = excel_file.sheet_names[1]
@@ -370,7 +716,10 @@ def import_ontology_mapping(
         relations=relations,
         source_tables=source_tables,
         ontology_name="xksx_ontology",
-        ontology_description=f"Imported from {os.path.basename(excel_path)} (sheet1={entity_sheet_name}, sheet2={relation_sheet_name})",
+        ontology_description=(
+            f"Imported from {os.path.basename(excel_path)} "
+            f"(sheet1={entity_sheet_name}, sheet2={relation_sheet_name})"
+        ),
         source_id=source_id,
         source_name=source_name,
         mapping_description=f"Ontology-first mapping imported from {os.path.basename(excel_path)}",
@@ -397,6 +746,7 @@ def import_ontology_mapping(
     ]
 
     return {
+        "mode": "legacy_two_sheet",
         "excel_path": excel_path,
         "sheet1": entity_sheet_name,
         "sheet2": relation_sheet_name,
@@ -412,12 +762,8 @@ def import_ontology_mapping(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Import ontology and mapping from Excel (ontology-first).")
-    parser.add_argument(
-        "--excel",
-        required=True,
-        help="Excel path (sheet1: entity/property list, sheet2: relations).",
-    )
+    parser = argparse.ArgumentParser(description="Import ontology and mapping from Excel.")
+    parser.add_argument("--excel", required=True, help="Excel path.")
     parser.add_argument(
         "--ontology-out",
         default=os.path.join(config.ONTOLOGY_DIR, "student_mgmt_ontology.json"),
@@ -431,7 +777,7 @@ def main():
     parser.add_argument(
         "--source-dir",
         default=config.DATA_SOURCES.get("xksx", ""),
-        help="Data source directory for table adaptation.",
+        help="Data source directory for generated/linked table files.",
     )
     parser.add_argument("--source-id", default="xksx")
     parser.add_argument("--source-name", default="xksx")
@@ -446,12 +792,23 @@ def main():
         source_name=args.source_name,
     )
 
+    print(f"[OK] mode={result.get('mode')}")
     print(f"[OK] Excel: {result['excel_path']}")
-    print(f"[OK] Sheet1={result['sheet1']}, Sheet2={result['sheet2']}")
-    print(f"[OK] 实体总数: {result['entity_count']}, 关系总数: {result['relation_count']}")
-    print(f"[OK] 映射实体数: {result['mapped_entity_count']}, 未映射实体数: {result['unmapped_entity_count']}")
     print(f"[OK] Ontology -> {result['ontology_out']}")
     print(f"[OK] Mapping  -> {result['mapping_out']}")
+    if result.get("mode") == "table_structure":
+        print(
+            f"[OK] entities={result.get('entity_count', 0)}, "
+            f"fields={result.get('field_count', 0)}, "
+            f"primary_keys={result.get('primary_key_field_count', 0)}"
+        )
+        print(f"[OK] generated tables={len(result.get('generated_table_files', []))}")
+    else:
+        print(
+            f"[OK] entities={result.get('entity_count', 0)}, "
+            f"relations={result.get('relation_count', 0)}, "
+            f"mapped={result.get('mapped_entity_count', 0)}"
+        )
 
 
 if __name__ == "__main__":

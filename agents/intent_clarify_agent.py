@@ -1,4 +1,4 @@
-"""Intent clarify agent - parse natural language into structured intent."""
+﻿"""Intent clarify agent - parse natural language into structured intent."""
 import json
 import re
 from string import Template
@@ -22,12 +22,13 @@ class IntentClarifyAgent(BaseAgent):
         self.prompts = prompt_manager
 
     def run(self, input_data: dict) -> dict:
-        raw_question = input_data["question"]
+        raw_question = str(input_data.get("question", "")).strip()
         self.log(f"分析用户问题: {raw_question}")
 
         ontology_desc = self.ontology.to_description()
         knowledge_snippets = []
         metric_rule_hit = None
+
         if self.knowledge:
             knowledge_snippets = self.knowledge.retrieve_term_knowledge(raw_question, top_k=3)
             if knowledge_snippets:
@@ -35,35 +36,22 @@ class IntentClarifyAgent(BaseAgent):
 
             metric_rule_hit = self.knowledge.match_metric_sql_rule(raw_question)
             if not metric_rule_hit and self._contains_embedded_sql(knowledge_snippets):
-                self.log("检测到术语知识包含 SQL 文本，但未命中“指标SQL规则”，不会直接执行")
+                self.log("检测到术语知识包含SQL文本，但未命中指标SQL规则，不会直接执行")
 
         if metric_rule_hit:
-            preferred_source = input_data.get("preferred_source")
-            source_id = preferred_source or metric_rule_hit.get("data_source") or "xksx"
-            target_entities = metric_rule_hit.get("target_entities") or self._extract_target_entities(
-                metric_rule_hit.get("sql", "")
-            )
+            target_entities = metric_rule_hit.get("target_entities") or self._extract_target_entities(metric_rule_hit.get("sql", ""))
             primary_entity = target_entities[0] if target_entities else ""
             metric_hints = self._extract_metric_hints(raw_question, target_entities)
-            conditions = metric_hints.get("conditions", [])
-            output_fields = metric_hints.get("output_fields", [])
-            calc_params = metric_hints.get("calc_params", {})
-            if conditions or output_fields or calc_params:
-                self.log(
-                    "指标规则补充解析: "
-                    f"条件={len(conditions)}, 输出字段={len(output_fields)}, 参数={calc_params}"
-                )
 
             result = {
                 "clarified_question": raw_question,
                 "target_entities": target_entities,
                 "primary_entity": primary_entity,
                 "primary_entity_source": "metric_rule_default_first_entity",
-                "conditions": conditions,
-                "output_fields": output_fields,
+                "conditions": metric_hints.get("conditions", []),
+                "output_fields": metric_hints.get("output_fields", []),
                 "calc_type": "custom_sql",
-                "calc_params": calc_params,
-                "data_source": source_id,
+                "calc_params": metric_hints.get("calc_params", {}),
                 "custom_sql": metric_rule_hit["sql"],
                 "custom_sql_rule_id": metric_rule_hit.get("id", ""),
                 "custom_sql_rule_name": metric_rule_hit.get("name", ""),
@@ -71,13 +59,8 @@ class IntentClarifyAgent(BaseAgent):
             }
             self.log(
                 f"命中指标SQL规则: {metric_rule_hit.get('name', '')} "
-                f"(关键词: {metric_rule_hit.get('matched_keywords', [])})，直接使用预定义SQL"
+                f"(关键词: {metric_rule_hit.get('matched_keywords', [])})"
             )
-            self.log(
-                f"意图澄清完成: 目标实体={result.get('target_entities')}, "
-                f"计算类型={result.get('calc_type')}, 数据源={result.get('data_source')}"
-            )
-            self.log(f"primary_entity_source={result.get('primary_entity_source', '')}")
             return {
                 **input_data,
                 "clarified_intent": result,
@@ -86,25 +69,13 @@ class IntentClarifyAgent(BaseAgent):
                 "metric_sql_rule_hit": metric_rule_hit,
             }
 
-        knowledge_block = ""
-        if knowledge_snippets:
-            lines = []
-            for i, item in enumerate(knowledge_snippets, start=1):
-                lines.append(
-                    f"{i}. 术语: {item.get('term', '')}\n"
-                    f"   命中关键词: {', '.join(item.get('matched_keywords', []))}\n"
-                    f"   释义: {item.get('content', '')}"
-                )
-            knowledge_block = "\n\n领域知识（仅供参考，按需使用）:\n" + "\n".join(lines)
-
-        default_system_template = """你是一个意图澄清智能体，负责把用户问题解析成结构化 JSON。
+        knowledge_block = self._build_knowledge_block(knowledge_snippets)
+        default_system_template = """你是一个意图澄清智能体，负责把用户问题解析成结构化JSON。
 你掌握的本体知识如下：
 $ontology_desc
-
-可用数据源: $available_sources
 $knowledge_block
 
-请严格返回 JSON（不要输出解释文字），格式如下：
+请严格返回JSON（不要输出解释文字），格式如下：
 {
   "clarified_question": "澄清后的问题",
   "target_entities": ["实体英文名"],
@@ -121,31 +92,21 @@ $knowledge_block
     "order_by": "属性英文名或ENTITY.FIELD或__metric__",
     "order_dir": "asc或desc",
     "limit": 10
-  },
-  "data_source": "all或具体数据源ID"
+  }
 }
 
 规则：
-1) “各/分别/每个/按XX”这类分组语义，必须给出 group_by，并把分组字段放入 output_fields。
-2) “最高/最多/最大” => order_by=__metric__, order_dir=desc, limit=1。
-3) “最低/最少/最小” => order_by=__metric__, order_dir=asc, limit=1。
-4) 如果是 sum/avg/max/min 且同时询问“各XX分别”，优先按维度字段分组，不要仅返回全局汇总。
-5) data_source 除非用户明确指定，否则一律为 all。"""
-        # Keep condition values as user semantics in step-1; defer DB value grounding to step-2.
-        default_system_template += (
-            "\n6) conditions.value must keep user semantic text and must not convert to database code values."
-        )
-        default_system_template += (
-            "\n7) Must output primary_entity."
-            "\n8) If target_entities has multiple entities, primary_entity must be one of them."
-            "\n9) If target_entities has exactly one entity, primary_entity must equal target_entities[0]."
-        )
+1) “各/分别/每个/按XX”这类分组语义，必须给出group_by，并把分组字段放入output_fields。
+2) “最高/最大”=> order_by=__metric__, order_dir=desc, limit=1。
+3) “最低/最小”=> order_by=__metric__, order_dir=asc, limit=1。
+4) 条件值保留用户语义文本，不要提前映射为数据库编码。
+5) 必须输出primary_entity。"""
+
         system_prompt = self._render_prompt(
             key="intent_clarify_system",
             default_template=default_system_template,
             context={
                 "ontology_desc": ontology_desc,
-                "available_sources": ", ".join(input_data.get("available_sources", {}).keys()),
                 "knowledge_block": knowledge_block,
             },
         )
@@ -157,23 +118,14 @@ $knowledge_block
         )
 
         if not self.llm:
-            result = self._normalize_intent_result(
-                raw_question,
-                {},
-                available_sources=input_data.get("available_sources", {}),
-            )
+            result = self._normalize_intent_result(raw_question, {})
         else:
-            result = self.llm.chat_json(system_prompt, raw_question)
-            self.log(f"模型返回JSON: {self._json_for_log(result)}")
-            result = self._normalize_intent_result(
-                raw_question,
-                result,
-                available_sources=input_data.get("available_sources", {}),
-            )
+            model_result = self.llm.chat_json(system_prompt, raw_question)
+            self.log(f"模型返回JSON: {self._json_for_log(model_result)}")
+            result = self._normalize_intent_result(raw_question, model_result)
 
         self.log(
-            f"意图澄清完成: 目标实体={result.get('target_entities')}, "
-            f"计算类型={result.get('calc_type')}, 数据源={result.get('data_source')}"
+            f"意图澄清完成: 目标实体={result.get('target_entities')}, 计算类型={result.get('calc_type')}"
         )
         self.log(f"primary_entity_source={result.get('primary_entity_source', '')}")
         return {
@@ -184,6 +136,18 @@ $knowledge_block
             "metric_sql_rule_hit": None,
         }
 
+    def _build_knowledge_block(self, knowledge_snippets: list) -> str:
+        if not knowledge_snippets:
+            return ""
+        lines = []
+        for idx, item in enumerate(knowledge_snippets, start=1):
+            lines.append(
+                f"{idx}. 术语: {item.get('term', '')}\n"
+                f"   命中关键词: {', '.join(item.get('matched_keywords', []))}\n"
+                f"   释义: {item.get('content', '')}"
+            )
+        return "\n\n领域知识（仅供参考，按需使用）\n" + "\n".join(lines)
+
     def _extract_target_entities(self, sql: str) -> list:
         entities = []
         for match in self.FROM_PATTERN.finditer(sql or ""):
@@ -191,160 +155,21 @@ $knowledge_block
             if not table_name:
                 continue
             candidate = table_name.upper()
-            if self.ontology.get_entity(candidate):
+            if self.ontology.get_entity(candidate) and candidate not in entities:
                 entities.append(candidate)
-        unique = []
-        for name in entities:
-            if name not in unique:
-                unique.append(name)
-        return unique
+        return entities
 
     def _extract_metric_hints(self, question: str, target_entities: list) -> dict:
-        if not self.llm:
-            return self._fallback_metric_hints(question, target_entities)
-
-        primary_entity = target_entities[0] if target_entities else ""
-        properties = self.ontology.get_entity_properties(primary_entity) if primary_entity else {}
-        property_lines = []
-        for prop_name, prop_def in properties.items():
-            label = prop_def.get("label", "")
-            aliases = prop_def.get("aliases", [])
-            alias_text = f" 别名={aliases}" if aliases else ""
-            property_lines.append(f"- {prop_name}({label}){alias_text}")
-        property_block = "\n".join(property_lines) if property_lines else "- 无可用属性"
-
-        default_system_template = """你是“指标查询补充解析器”。
-已确定用户要查询一个预定义指标，不要改指标本身，只抽取“筛选条件+分组/排序/限制”。
-目标实体: $primary_entity
-可用属性:
-$property_block
-
-请返回 JSON:
-{
-  "conditions": [
-    {"field":"属性名","op":"=|!=|>|<|>=|<=|contains|in","value":"值","entity":"实体名"}
-  ],
-  "output_fields": [
-    {"field":"属性名","entity":"实体名","label":"显示名"}
-  ],
-  "calc_params": {
-    "group_by": ["属性名"],
-    "order_by": "属性名或__metric__",
-    "order_dir": "asc或desc",
-    "limit": 1
-  }
-}
-
-规则:
-1) 没提到就留空列表或空字符串，不要臆造。
-2) “最高/最多/最大” => order_by=__metric__, order_dir=desc, limit=1。
-3) “最低/最少/最小” => order_by=__metric__, order_dir=asc, limit=1。
-4) “哪个区划/各区划/按区划”优先用 AREACODE 做 group_by，并放入 output_fields。
-5) entity 统一填 $primary_entity。"""
-        system_prompt = self._render_prompt(
-            key="metric_hint_system",
-            default_template=default_system_template,
-            context={
-                "primary_entity": primary_entity or "INFORMATION_SYSTEM",
-                "property_block": property_block,
-            },
-        )
-
-        try:
-            parsed = self.llm.chat_json(system_prompt, question)
-            self.log(f"指标补充模型返回JSON: {self._json_for_log(parsed)}")
-        except Exception as exc:
-            self.log(f"指标规则补充解析失败，改用兜底规则: {exc}")
-            return self._fallback_metric_hints(question, target_entities)
-
-        if not isinstance(parsed, dict):
-            return self._fallback_metric_hints(question, target_entities)
-
-        conditions = []
-        for item in parsed.get("conditions", []) if isinstance(parsed.get("conditions"), list) else []:
-            if not isinstance(item, dict):
-                continue
-            field = str(item.get("field", "")).strip()
-            if not field:
-                continue
-            op = str(item.get("op", "=")).strip().lower() or "="
-            if op not in self.SUPPORTED_OPS:
-                op = "="
-            value = item.get("value", "")
-            entity = str(item.get("entity", "")).strip().upper() or primary_entity
-            conditions.append({
-                "field": field,
-                "op": op,
-                "value": value,
-                "entity": entity,
-            })
-
-        output_fields = []
-        for item in parsed.get("output_fields", []) if isinstance(parsed.get("output_fields"), list) else []:
-            if not isinstance(item, dict):
-                continue
-            field = str(item.get("field", "")).strip()
-            if not field:
-                continue
-            entity = str(item.get("entity", "")).strip().upper() or primary_entity
-            label = str(item.get("label", "")).strip() or field
-            output_fields.append({
-                "field": field,
-                "entity": entity,
-                "label": label,
-            })
-
-        normalized_calc_params = self._normalize_calc_params(parsed.get("calc_params", {}))
-
-        should_group = self._question_requires_grouping(question)
-        if not should_group:
-            normalized_calc_params.pop("group_by", None)
-            normalized_calc_params.pop("order_by", None)
-            normalized_calc_params.pop("order_dir", None)
-            normalized_calc_params.pop("limit", None)
-
-        conditions = [
-            item for item in conditions
-            if self._condition_supported_by_question(
-                question=question,
-                entity=item.get("entity", ""),
-                field=item.get("field", ""),
-                value=item.get("value"),
-            )
-        ]
-
-        grouped_fields = set(
-            self._split_field_ref(item)[1].upper()
-            for item in normalized_calc_params.get("group_by", [])
-            if str(item).strip()
-        )
-        output_fields = [
-            item for item in output_fields
-            if str(item.get("field", "")).strip().upper() in grouped_fields
-            or self._field_supported_by_question(
-                question=question,
-                entity=item.get("entity", ""),
-                field=item.get("field", ""),
-            )
-        ]
-
-        return {
-            "conditions": conditions,
-            "output_fields": output_fields,
-            "calc_params": normalized_calc_params,
-        }
-
-    def _fallback_metric_hints(self, question: str, target_entities: list) -> dict:
         text = str(question or "")
-        primary_entity = target_entities[0] if target_entities else "INFORMATION_SYSTEM"
+        primary_entity = target_entities[0] if target_entities else ""
+
         hints = {
             "conditions": [],
             "output_fields": [],
             "calc_params": {},
         }
 
-        ask_area = any(token in text for token in ("区划", "地区", "地市", "各区", "按区"))
-        if ask_area:
+        if any(token in text for token in ("区划", "地区", "地市", "各区", "按区")):
             hints["output_fields"].append({
                 "field": "AREACODE",
                 "entity": primary_entity,
@@ -352,127 +177,12 @@ $property_block
             })
             hints["calc_params"]["group_by"] = ["AREACODE"]
 
-        if any(token in text for token in ("最高", "最大", "最多")):
-            hints["calc_params"]["order_by"] = "__metric__"
-            hints["calc_params"]["order_dir"] = "desc"
-            hints["calc_params"]["limit"] = 1
-        elif any(token in text for token in ("最低", "最小", "最少")):
-            hints["calc_params"]["order_by"] = "__metric__"
-            hints["calc_params"]["order_dir"] = "asc"
-            hints["calc_params"]["limit"] = 1
+        if any(token in text for token in ("最高", "最大")):
+            hints["calc_params"].update({"order_by": "__metric__", "order_dir": "desc", "limit": 1})
+        elif any(token in text for token in ("最低", "最小")):
+            hints["calc_params"].update({"order_by": "__metric__", "order_dir": "asc", "limit": 1})
 
         return hints
-
-    @staticmethod
-    def _question_requires_grouping(question: str) -> bool:
-        text = str(question or "")
-
-        grouping_hints = (
-            "\u5404", "\u5206\u522b", "\u6bcf\u4e2a", "\u54ea\u4e2a", "\u54ea\u4e00\u4e2a", "\u6392\u884c", "\u6392\u540d", "\u6700\u9ad8", "\u6700\u4f4e",
-            "top", "\u524d", "\u533a\u5212", "\u5730\u533a", "\u5730\u5e02", "\u533a\u53bf", "\u57ce\u5e02",
-            "\u6309\u5730\u533a", "\u6309\u533a\u5212", "\u6309\u5730\u5e02", "\u6309\u90e8\u95e8", "\u6309\u5355\u4f4d", "\u6309\u7c7b\u522b", "\u6309\u7c7b\u578b",
-        )
-        if any(token in text for token in grouping_hints):
-            return True
-
-        if re.search(r"\u6309[^\uFF0C\u3002\uFF1B,.]{0,8}(\u5206\u7ec4|\u7edf\u8ba1|\u6c47\u603b|\u5206\u522b|\u5404|\u6392\u540d|\u6392\u884c)", text):
-            return True
-
-        return False
-
-    @staticmethod
-    def _question_requires_limit(question: str, calc_type: str = "", order_by: str = "") -> bool:
-        text = str(question or "")
-        text_lower = text.lower()
-        calc_type_text = str(calc_type or "").strip().lower()
-        order_by_text = str(order_by or "").strip().lower()
-
-        if calc_type_text == "topn":
-            return True
-
-        explicit_limit_patterns = (
-            r"top\s*\d+",
-            r"前\s*\d+",
-            r"首\s*\d+",
-            r"前十|前五|前三|前二十|前30|前20|前10|前5|前3",
-        )
-        if any(re.search(pattern, text_lower) for pattern in explicit_limit_patterns):
-            return True
-
-        ranking_keywords = ("最高", "最低", "最大", "最小", "最多", "最少", "排行", "排名")
-        if any(token in text for token in ranking_keywords):
-            return True
-
-        if order_by_text in {"__metric__", "metric"} and any(token in text for token in ranking_keywords):
-            return True
-
-        return False
-
-    def _field_supported_by_question(self, question: str, entity: str, field: str) -> bool:
-        q = str(question or "")
-        f = str(field or "").strip()
-        if not q or not f:
-            return False
-        if f in q:
-            return True
-
-        props = self.ontology.get_entity_properties(entity)
-        prop_def = props.get(f, {}) if isinstance(props, dict) else {}
-        candidates = [str(prop_def.get("label", "")).strip()]
-        aliases = prop_def.get("aliases", [])
-        if isinstance(aliases, list):
-            candidates.extend(str(item).strip() for item in aliases if str(item).strip())
-        return any(token and token in q for token in candidates)
-
-    def _condition_supported_by_question(self, question: str, entity: str, field: str, value) -> bool:
-        q = str(question or "")
-        if not q:
-            return False
-
-        field_hit = self._field_supported_by_question(question, entity, field)
-
-        value_hits = False
-        value_text = ""
-        if isinstance(value, list):
-            value_hits = any(str(v).strip() and str(v).strip() in q for v in value)
-            value_text = ",".join(str(v).strip() for v in value if str(v).strip())
-        elif value is not None:
-            value_text = str(value).strip()
-            if value_text:
-                value_hits = value_text in q
-
-        if field_hit:
-            return True
-
-        if value_hits:
-            if self._is_geo_value(value_text):
-                return self._is_geo_field(field)
-            return True
-
-        if isinstance(value, bool):
-            return False
-        if isinstance(value, str) and value.strip().lower() in ("true", "false", "是", "否", "0", "1"):
-            return False
-
-        return False
-
-    @staticmethod
-    def _is_geo_field(field: str) -> bool:
-        field_upper = str(field or "").strip().upper()
-        if field_upper in {"AREACODE", "AREA_CODE", "PROVINCE", "CITY", "COUNTY", "REGION"}:
-            return True
-        return any(token in field_upper for token in ("AREA", "PROVINCE", "CITY", "COUNTY", "REGION"))
-
-    @staticmethod
-    def _is_geo_value(value: str) -> bool:
-        text = str(value or "").strip()
-        if not text:
-            return False
-        if text in {"江苏省", "全省", "省内", "全国", "全市", "全区", "全县"}:
-            return True
-        if any(token in text for token in ("厅", "局", "委", "办", "院", "校", "公司", "集团", "法院", "检察院")):
-            return False
-        return bool(re.match(r"^[\u4e00-\u9fa5]{2,8}(省|市|区|县|自治州)?$", text))
 
     @staticmethod
     def _contains_embedded_sql(knowledge_snippets: list) -> bool:
@@ -490,7 +200,7 @@ $property_block
         except Exception:
             return default_template
 
-    def _normalize_intent_result(self, question: str, result: dict, available_sources: dict | None = None) -> dict:
+    def _normalize_intent_result(self, question: str, result: dict) -> dict:
         parsed = result if isinstance(result, dict) else {}
         clarified_question = str(parsed.get("clarified_question") or question).strip() or str(question or "")
 
@@ -499,11 +209,13 @@ $property_block
             target_entities_raw = [target_entities_raw]
         if not isinstance(target_entities_raw, list):
             target_entities_raw = []
+
         target_entities = []
         for item in target_entities_raw:
             entity_name = str(item).strip().upper()
             if entity_name and entity_name not in target_entities:
                 target_entities.append(entity_name)
+
         default_entity = target_entities[0] if target_entities else ""
         raw_primary_entity = str(parsed.get("primary_entity", "")).strip().upper()
         primary_entity = ""
@@ -539,6 +251,7 @@ $property_block
                     "value": item.get("value", ""),
                     "entity": entity,
                 })
+
         output_fields = []
         raw_output_fields = parsed.get("output_fields", [])
         if isinstance(raw_output_fields, list):
@@ -565,14 +278,9 @@ $property_block
         should_group = self._question_requires_grouping(question)
         aggregate_types = {"count", "sum", "avg", "max", "min", "rate", "group_count"}
         if calc_type in aggregate_types and should_group and not calc_params.get("group_by"):
-            inferred_group_fields = self._derive_group_fields_from_outputs(output_fields)
-            if inferred_group_fields:
-                calc_params["group_by"] = inferred_group_fields
-
-        if calc_type == "group_count" and not calc_params.get("group_by"):
-            inferred_group_fields = self._derive_group_fields_from_outputs(output_fields, prefer_dimension_only=False)
-            if inferred_group_fields:
-                calc_params["group_by"] = inferred_group_fields
+            inferred = self._derive_group_fields_from_outputs(output_fields)
+            if inferred:
+                calc_params["group_by"] = inferred
 
         if calc_type == "topn":
             calc_params.setdefault("order_by", "__metric__")
@@ -586,35 +294,6 @@ $property_block
         ):
             calc_params.pop("limit", None)
 
-        for group_ref in calc_params.get("group_by", []):
-            group_entity, group_field = self._split_field_ref(group_ref)
-            if not group_field:
-                continue
-            has_field = any(
-                str(item.get("field", "")).upper() == group_field.upper()
-                and (not group_entity or str(item.get("entity", "")).upper() == group_entity.upper())
-                for item in output_fields
-            )
-            if has_field:
-                continue
-            output_fields.insert(0, {
-                "field": group_field,
-                "entity": group_entity or default_entity,
-                "label": group_field,
-            })
-
-        output_fields = self._normalize_output_labels(
-            question=question,
-            calc_type=calc_type,
-            calc_params=calc_params,
-            output_fields=output_fields,
-        )
-
-        data_source = str(parsed.get("data_source", "all")).strip() or "all"
-        source_keys = set((available_sources or {}).keys())
-        if data_source != "all" and source_keys and data_source not in source_keys:
-            data_source = "all"
-
         return {
             "clarified_question": clarified_question,
             "target_entities": target_entities,
@@ -624,50 +303,41 @@ $property_block
             "output_fields": output_fields,
             "calc_type": calc_type,
             "calc_params": calc_params,
-            "data_source": data_source,
         }
 
-    def _normalize_output_labels(self, question: str, calc_type: str, calc_params: dict, output_fields: list) -> list:
-        if not isinstance(output_fields, list):
-            return output_fields
-
+    @staticmethod
+    def _question_requires_grouping(question: str) -> bool:
         text = str(question or "")
-        group_by = calc_params.get("group_by", []) if isinstance(calc_params, dict) else []
-        if isinstance(group_by, str):
-            group_by = [group_by]
-        group_fields = set()
-        for item in group_by if isinstance(group_by, list) else []:
-            _, field_name = self._split_field_ref(item)
-            if field_name:
-                group_fields.add(field_name.upper())
-
-        needs_total_suffix = str(calc_type or "").strip().lower() == "sum" and any(
-            token in text for token in ("总和", "合计", "总计", "总数")
+        grouping_hints = (
+            "各", "分别", "每个", "哪个", "排行", "排名", "最高", "最低",
+            "top", "前", "区划", "地区", "地市", "区县", "城市",
+            "按地区", "按区划", "按地市", "按部门", "按单位", "按类别", "按类型",
         )
+        if any(token in text for token in grouping_hints):
+            return True
+        return bool(re.search(r"按[^，。；,.]{0,8}(分组|统计|汇总|分别|各|排名|排行)", text))
 
-        normalized = []
-        for item in output_fields:
-            if not isinstance(item, dict):
-                continue
-            copied = dict(item)
-            field_name = str(copied.get("field", "")).strip()
-            label = str(copied.get("label", "")).strip() or field_name
-            field_upper = field_name.upper()
+    @staticmethod
+    def _question_requires_limit(question: str, calc_type: str = "", order_by: str = "") -> bool:
+        text = str(question or "")
+        text_lower = text.lower()
+        calc_type_text = str(calc_type or "").strip().lower()
+        order_by_text = str(order_by or "").strip().lower()
 
-            if field_upper == "AREACODE":
-                if "地区" in text:
-                    label = "地区"
-                elif "区划" in text:
-                    label = "区划"
+        if calc_type_text == "topn":
+            return True
 
-            if needs_total_suffix and field_upper not in group_fields:
-                if not any(token in label for token in ("总和", "总计", "合计", "总数")):
-                    suffix = "总数" if any(token in label for token in ("数量", "个数", "条数", "项数")) else "总和"
-                    label = f"{label}{suffix}"
+        if any(re.search(pattern, text_lower) for pattern in (r"top\s*\d+", r"前\s*\d+")):
+            return True
 
-            copied["label"] = label
-            normalized.append(copied)
-        return normalized
+        ranking_keywords = ("最高", "最低", "最大", "最小", "排行", "排名")
+        if any(token in text for token in ranking_keywords):
+            return True
+
+        if order_by_text in {"__metric__", "metric"} and any(token in text for token in ranking_keywords):
+            return True
+
+        return False
 
     def _normalize_calc_params(self, calc_params: dict) -> dict:
         if not isinstance(calc_params, dict):
@@ -732,12 +402,11 @@ $property_block
 
         return normalized
 
-    def _derive_group_fields_from_outputs(self, output_fields: list, prefer_dimension_only: bool = True) -> list:
+    def _derive_group_fields_from_outputs(self, output_fields: list) -> list:
         if not isinstance(output_fields, list):
             return []
 
-        dimension_fields = []
-        fallback_fields = []
+        refs = []
         seen = set()
         for item in output_fields:
             if not isinstance(item, dict):
@@ -750,47 +419,9 @@ $property_block
             if ref in seen:
                 continue
             seen.add(ref)
-            fallback_fields.append(ref)
-            if not self._is_numeric_like_field(entity, field):
-                dimension_fields.append(ref)
+            refs.append(ref)
 
-        if dimension_fields:
-            return dimension_fields
-        if prefer_dimension_only:
-            return []
-        return fallback_fields[:1]
-
-    def _is_numeric_like_field(self, entity: str, field: str) -> bool:
-        field_name = str(field or "").strip()
-        if not field_name:
-            return False
-
-        properties = self.ontology.get_entity_properties(entity) if entity else {}
-        prop_def = properties.get(field_name, {}) if isinstance(properties, dict) else {}
-        field_type = str(prop_def.get("type", "")).strip().lower()
-        if field_type in {"number", "int", "integer", "float", "double", "decimal", "long", "short"}:
-            return True
-        if field_type in {"boolean", "bool"}:
-            return False
-
-        name_upper = field_name.upper()
-        if name_upper.startswith("IS_") or name_upper.startswith("HAS_"):
-            return False
-        numeric_tokens = (
-            "COUNT", "NUM", "AMOUNT", "COST", "FEE", "BUDGET", "EXPENSE", "TOTAL",
-            "USE", "USAGE", "VALUE", "RATE", "PERCENT", "CPU", "MEM", "DISK",
-        )
-        return any(token in name_upper for token in numeric_tokens)
-
-    @staticmethod
-    def _split_field_ref(field_ref: str) -> tuple[str, str]:
-        text = str(field_ref or "").strip().strip("`")
-        if not text:
-            return "", ""
-        if "." in text:
-            entity_name, field_name = text.rsplit(".", 1)
-            return entity_name.strip().upper(), field_name.strip()
-        return "", text
+        return refs
 
     @staticmethod
     def _to_bool(value):
@@ -804,7 +435,6 @@ $property_block
         if text in {"0", "false", "no", "n", "否"}:
             return False
         return None
-
 
     @staticmethod
     def _json_for_log(payload) -> str:

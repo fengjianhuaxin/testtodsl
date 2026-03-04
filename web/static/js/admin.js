@@ -445,19 +445,13 @@ async function deleteRelationAction(index) {
 // ============================================================
 async function loadTablesModule() {
     try {
-        const sources = await API.getSources();
-        const el = document.getElementById('sourceList');
-        el.innerHTML = sources.map(s => `
-            <div class="card" style="cursor:pointer;padding:14px" onclick="loadTableStructure('${s.id}')">
-                <div style="font-weight:600;color:var(--text-primary)">${s.name}</div>
-                <div style="font-size:12px;color:var(--text-muted)">${s.id}</div>
-            </div>`).join('');
+        await loadTableStructure();
     } catch (e) { showToast('加载失败', 'error'); }
 }
 
-async function loadTableStructure(sourceId) {
+async function loadTableStructure() {
     try {
-        const tables = await API.getTables(sourceId);
+        const tables = await API.getTables();
         const el = document.getElementById('tableStructure');
         if (!tables.length) { el.innerHTML = '<div style="color:var(--text-muted);padding:20px">无数据表</div>'; return; }
         el.innerHTML = tables.map(t => `
@@ -477,17 +471,13 @@ async function loadTableStructure(sourceId) {
 // ============================================================
 async function loadMappingModule() {
     try {
-        const sources = await API.getSources();
-        const sel = document.getElementById('mappingSourceSelect');
-        sel.innerHTML = '<option value="">请选择</option>' + sources.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        await loadMappingForSource();
     } catch (e) { showToast('加载失败', 'error'); }
 }
 
 async function loadMappingForSource() {
-    const sourceId = document.getElementById('mappingSourceSelect').value;
-    if (!sourceId) { document.getElementById('mappingList').innerHTML = ''; return; }
     try {
-        const mapping = await API.getMapping(sourceId);
+        const mapping = await API.getMapping();
         const el = document.getElementById('mappingList');
         const tm = mapping.table_mappings || {};
         if (!Object.keys(tm).length) { el.innerHTML = '<div style="color:var(--text-muted);padding:20px">无映射</div>'; return; }
@@ -503,9 +493,9 @@ async function loadMappingForSource() {
                         <span class="badge badge-yellow" style="margin-left:8px">值语义字段 ${semanticsCount}</span>
                     </div>
                     <div style="display:flex;gap:6px">
-                        <button class="btn btn-primary btn-sm" onclick="llmAnalyze('${sourceId}','${entity}','${m.file_name}')">LLM 预分析</button>
-                        <button class="btn btn-secondary btn-sm" onclick="showEditMappingModal('${sourceId}','${entity}')">编辑</button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteMappingAction('${sourceId}','${entity}')">删除</button>
+                        <button class="btn btn-primary btn-sm" onclick="llmAnalyze('${entity}','${m.file_name}')">LLM 预分析</button>
+                        <button class="btn btn-secondary btn-sm" onclick="showEditMappingModal('${entity}')">编辑</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteMappingAction('${entity}')">删除</button>
                     </div>
                 </div>
                 <div class="mapping-editor">
@@ -527,10 +517,10 @@ async function loadMappingForSource() {
     }
 }
 
-async function llmAnalyze(sourceId, entityName, fileName) {
+async function llmAnalyze(entityName, fileName) {
     showToast('正在调用 LLM 预分析...', 'info');
     try {
-        const result = await API.llmAnalyze({ source_id: sourceId, entity_name: entityName, file_name: fileName });
+        const result = await API.llmAnalyze({ entity_name: entityName, file_name: fileName });
         if (result.success) {
             const suggested = result.suggested_mapping;
             showModal('LLM 预分析结果', `
@@ -547,7 +537,7 @@ async function llmAnalyze(sourceId, entityName, fileName) {
                 const inputs = document.querySelectorAll('.modal [data-prop]');
                 const fm = {};
                 inputs.forEach(inp => { if (inp.value) fm[inp.dataset.prop] = inp.value; });
-                await API.updateEntityMapping(sourceId, entityName, {
+                await API.updateEntityMapping(entityName, {
                     table_name: fileName.replace('.xlsx', ''),
                     file_name: fileName,
                     field_mappings: fm
@@ -558,31 +548,30 @@ async function llmAnalyze(sourceId, entityName, fileName) {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
-async function deleteMappingAction(sourceId, entity) {
+async function deleteMappingAction(entity) {
     if (!confirm(`确定删除 ${entity} 的映射？`)) return;
-    await API.deleteEntityMapping(sourceId, entity);
+    await API.deleteEntityMapping(entity);
     loadMappingForSource(); showToast('已删除', 'success');
 }
 
 function showAddMappingModal() {
     showModal('新增映射', `
-        <div class="form-row"><label>数据源ID</label><input class="form-input" id="m-msource" placeholder="如: university_a"></div>
         <div class="form-row"><label>实体名</label><input class="form-input" id="m-mentity" placeholder="如: Student"></div>
         <div class="form-row"><label>表名</label><input class="form-input" id="m-mtable" placeholder="如: xuesheng"></div>
         <div class="form-row"><label>文件名</label><input class="form-input" id="m-mfile" placeholder="如: xuesheng.xlsx"></div>
     `, async () => {
-        await API.updateEntityMapping(gv('m-msource'), gv('m-mentity'), {
+        await API.updateEntityMapping(gv('m-mentity'), {
             table_name: gv('m-mtable'), file_name: gv('m-mfile'), field_mappings: {}
         });
         closeModal(); showToast('创建成功，请使用LLM预分析或手动编辑字段映射', 'success');
     });
 }
 
-async function showEditMappingModal(sourceId, entityName) {
+async function showEditMappingModal(entityName) {
     try {
         const [mapping, tables] = await Promise.all([
-            API.getMapping(sourceId),
-            API.getTables(sourceId)
+            API.getMapping(),
+            API.getTables()
         ]);
         const current = (mapping.table_mappings || {})[entityName];
         if (!current) {
@@ -612,7 +601,7 @@ async function showEditMappingModal(sourceId, entityName) {
         `, async () => {
             const fieldMappings = parseJsonObjectWithLabel(gv('m-mfieldmap'), '字段映射JSON');
             const fieldValueSemantics = parseJsonObjectWithLabel(gv('m-mvaluesem'), '字段值语义JSON');
-            await API.updateEntityMapping(sourceId, entityName, {
+            await API.updateEntityMapping(entityName, {
                 table_name: gv('m-mtable'),
                 file_name: gv('m-mfile'),
                 field_mappings: fieldMappings,
@@ -633,30 +622,25 @@ async function showEditMappingModal(sourceId, entityName) {
 let dataPage = 1;
 async function loadDataModule() {
     try {
-        const sources = await API.getSources();
-        const sel = document.getElementById('dataSourceSelect');
-        sel.innerHTML = '<option value="">请选择</option>' + sources.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        await loadDataEntities();
     } catch (e) { }
 }
 
 async function loadDataEntities() {
-    const sourceId = document.getElementById('dataSourceSelect').value;
     const sel = document.getElementById('dataEntitySelect');
-    if (!sourceId) { sel.innerHTML = ''; return; }
     try {
-        const mapping = await API.getMapping(sourceId);
+        const mapping = await API.getMapping();
         const entities = Object.keys(mapping.table_mappings || {});
         sel.innerHTML = '<option value="">请选择</option>' + entities.map(e => `<option value="${e}">${e}</option>`).join('');
     } catch (e) { sel.innerHTML = ''; }
 }
 
 async function loadDataTable() {
-    const sourceId = document.getElementById('dataSourceSelect').value;
     const entity = document.getElementById('dataEntitySelect').value;
     const search = document.getElementById('dataSearch').value;
-    if (!sourceId || !entity) return;
+    if (!entity) return;
     try {
-        const result = await API.getData(sourceId, entity, dataPage, 15, search);
+        const result = await API.getData(entity, dataPage, 15, search);
         let html = '<table class="data-table"><thead><tr>';
         html += '<th>#</th>';
         result.columns.forEach(c => html += `<th>${c}</th>`);
@@ -667,8 +651,8 @@ async function loadDataTable() {
             html += `<td>${absIdx + 1}</td>`;
             result.columns.forEach(c => html += `<td>${row[c] !== undefined ? row[c] : ''}</td>`);
             html += `<td>
-                <button class="btn btn-secondary btn-sm" onclick="showEditDataModal('${sourceId}','${entity}',${absIdx},${JSON.stringify(row).replace(/"/g, '&quot;')})">编辑</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteDataAction('${sourceId}','${entity}',${absIdx})">删除</button>
+                <button class="btn btn-secondary btn-sm" onclick="showEditDataModal('${entity}',${absIdx},${JSON.stringify(row).replace(/"/g, '&quot;')})">编辑</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteDataAction('${entity}',${absIdx})">删除</button>
             </td></tr>`;
         });
         html += '</tbody></table>';
@@ -686,34 +670,33 @@ async function loadDataTable() {
 }
 
 function showAddDataModal() {
-    const sourceId = document.getElementById('dataSourceSelect').value;
     const entity = document.getElementById('dataEntitySelect').value;
-    if (!sourceId || !entity) { showToast('请先选择数据源和实体', 'error'); return; }
+    if (!entity) { showToast('请先选择实体', 'error'); return; }
     // 获取列名
-    API.getData(sourceId, entity, 1, 1, '').then(result => {
+    API.getData(entity, 1, 1, '').then(result => {
         const fields = result.columns.map(c => `<div class="form-row"><label>${c}</label><input class="form-input" data-col="${c}"></div>`).join('');
         showModal('新增数据', fields, async () => {
             const row = {};
             document.querySelectorAll('.modal [data-col]').forEach(inp => { if (inp.value) row[inp.dataset.col] = inp.value; });
-            await API.addData(sourceId, entity, row);
+            await API.addData(entity, row);
             closeModal(); loadDataTable(); showToast('添加成功', 'success');
         });
     });
 }
 
-function showEditDataModal(sourceId, entity, idx, row) {
+function showEditDataModal(entity, idx, row) {
     const fields = Object.entries(row).map(([k, v]) => `<div class="form-row"><label>${k}</label><input class="form-input" data-col="${k}" value="${v || ''}"></div>`).join('');
     showModal('编辑数据', fields, async () => {
         const updated = {};
         document.querySelectorAll('.modal [data-col]').forEach(inp => { updated[inp.dataset.col] = inp.value; });
-        await API.updateData(sourceId, entity, idx, updated);
+        await API.updateData(entity, idx, updated);
         closeModal(); loadDataTable(); showToast('更新成功', 'success');
     });
 }
 
-async function deleteDataAction(sourceId, entity, idx) {
+async function deleteDataAction(entity, idx) {
     if (!confirm('确定删除此行？')) return;
-    await API.deleteData(sourceId, entity, idx);
+    await API.deleteData(entity, idx);
     loadDataTable(); showToast('已删除', 'success');
 }
 
@@ -933,12 +916,11 @@ async function loadKnowledgeModule() {
         if (!sqlRulesCache.length) {
             html += '<div style="color:var(--text-muted);padding:16px 0">暂无指标SQL规则</div>';
         } else {
-            html += '<table class="data-table"><thead><tr><th>规则名</th><th>关键词</th><th>数据源</th><th>优先级</th><th>启用</th><th>SQL</th><th>操作</th></tr></thead><tbody>';
+            html += '<table class="data-table"><thead><tr><th>规则名</th><th>关键词</th><th>优先级</th><th>启用</th><th>SQL</th><th>操作</th></tr></thead><tbody>';
             sqlRulesCache.forEach(item => {
                 const id = String(item.id || '');
                 const name = escHtml(item.name || '');
                 const keywords = escHtml((item.keywords || []).join(', '));
-                const source = escHtml(item.data_source || 'xksx');
                 const priority = Number(item.priority || 100);
                 const enabled = !!item.enabled;
                 const sql = escHtml(item.sql || '');
@@ -946,7 +928,6 @@ async function loadKnowledgeModule() {
                 html += `<tr>
                     <td><strong>${name}</strong></td>
                     <td>${keywords || '-'}</td>
-                    <td>${source}</td>
                     <td>${priority}</td>
                     <td>${enabled ? '<span class="badge badge-green">是</span>' : '<span class="badge">否</span>'}</td>
                     <td title="${sql}">${sqlShort}</td>
@@ -1094,7 +1075,6 @@ function showAddSqlRuleModal() {
         <div class="form-row"><label>规则名</label><input class="form-input" id="m-sql-name" placeholder="如: 上云率"></div>
         <div class="form-row"><label>关键词(逗号分隔)</label><input class="form-input" id="m-sql-keywords" placeholder="如: 上云率,系统上云率"></div>
         <div class="form-row"><label>目标实体(逗号分隔，可选)</label><input class="form-input" id="m-sql-target-entities" placeholder="如: INFORMATION_SYSTEM"></div>
-        <div class="form-row"><label>数据源</label><input class="form-input" id="m-sql-source" value="xksx"></div>
         <div class="form-row"><label>优先级(越大越优先)</label><input class="form-input" id="m-sql-priority" type="number" value="100"></div>
         <div class="form-row"><label>SQL(仅单条SELECT)</label><textarea class="form-input" id="m-sql-text" rows="8" placeholder="SELECT ..."></textarea></div>
         <div class="form-row"><label>说明</label><input class="form-input" id="m-sql-desc" placeholder="可选"></div>
@@ -1104,7 +1084,6 @@ function showAddSqlRuleModal() {
             name: gv('m-sql-name'),
             keywords: parseAliasList(gv('m-sql-keywords')),
             target_entities: parseAliasList(gv('m-sql-target-entities')),
-            data_source: gv('m-sql-source') || 'xksx',
             priority: Number(gv('m-sql-priority') || 100),
             sql: gv('m-sql-text'),
             description: gv('m-sql-desc'),
@@ -1133,7 +1112,6 @@ async function showEditSqlRuleModal(itemId) {
             <div class="form-row"><label>规则名</label><input class="form-input" id="m-sql-name" value="${escHtml(item.name || '')}"></div>
             <div class="form-row"><label>关键词(逗号分隔)</label><input class="form-input" id="m-sql-keywords" value="${escHtml((item.keywords || []).join(', '))}"></div>
             <div class="form-row"><label>目标实体(逗号分隔，可选)</label><input class="form-input" id="m-sql-target-entities" value="${escHtml((item.target_entities || []).join(', '))}"></div>
-            <div class="form-row"><label>数据源</label><input class="form-input" id="m-sql-source" value="${escHtml(item.data_source || 'xksx')}"></div>
             <div class="form-row"><label>优先级(越大越优先)</label><input class="form-input" id="m-sql-priority" type="number" value="${Number(item.priority || 100)}"></div>
             <div class="form-row"><label>SQL(仅单条SELECT)</label><textarea class="form-input" id="m-sql-text" rows="8">${escHtml(item.sql || '')}</textarea></div>
             <div class="form-row"><label>说明</label><input class="form-input" id="m-sql-desc" value="${escHtml(item.description || '')}"></div>
@@ -1143,7 +1121,6 @@ async function showEditSqlRuleModal(itemId) {
                 name: gv('m-sql-name'),
                 keywords: parseAliasList(gv('m-sql-keywords')),
                 target_entities: parseAliasList(gv('m-sql-target-entities')),
-                data_source: gv('m-sql-source') || 'xksx',
                 priority: Number(gv('m-sql-priority') || 100),
                 sql: gv('m-sql-text'),
                 description: gv('m-sql-desc'),

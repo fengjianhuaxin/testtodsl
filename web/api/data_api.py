@@ -14,7 +14,15 @@ import pandas as pd
 data_bp = Blueprint("data", __name__)
 
 
+def _resolve_source_id(source_id: str | None = None) -> str:
+    sid = str(source_id or "").strip()
+    if sid:
+        return sid
+    return config.get_default_source_id()
+
+
 def _get_file_path(source_id, entity_name):
+    source_id = _resolve_source_id(source_id)
     mapping_file = os.path.join(config.MAPPING_DIR, f"{source_id}_mapping.json")
     if not os.path.exists(mapping_file):
         return None
@@ -29,6 +37,7 @@ def _get_file_path(source_id, entity_name):
 
 @data_bp.route("/data/<source_id>/<entity_name>", methods=["GET"])
 def get_data(source_id, entity_name):
+    source_id = _resolve_source_id(source_id)
     fpath = _get_file_path(source_id, entity_name)
     if not fpath or not os.path.exists(fpath):
         return jsonify({"error": "数据文件不存在"}), 404
@@ -55,8 +64,14 @@ def get_data(source_id, entity_name):
     })
 
 
+@data_bp.route("/data/<entity_name>", methods=["GET"])
+def get_data_default(entity_name):
+    return get_data(_resolve_source_id(), entity_name)
+
+
 @data_bp.route("/data/<source_id>/<entity_name>", methods=["POST"])
 def add_data(source_id, entity_name):
+    source_id = _resolve_source_id(source_id)
     fpath = _get_file_path(source_id, entity_name)
     if not fpath:
         return jsonify({"error": "数据文件不存在"}), 404
@@ -68,8 +83,14 @@ def add_data(source_id, entity_name):
     return jsonify({"success": True})
 
 
+@data_bp.route("/data/<entity_name>", methods=["POST"])
+def add_data_default(entity_name):
+    return add_data(_resolve_source_id(), entity_name)
+
+
 @data_bp.route("/data/<source_id>/<entity_name>/<int:row_index>", methods=["PUT"])
 def update_data(source_id, entity_name, row_index):
+    source_id = _resolve_source_id(source_id)
     fpath = _get_file_path(source_id, entity_name)
     if not fpath or not os.path.exists(fpath):
         return jsonify({"error": "数据文件不存在"}), 404
@@ -84,8 +105,14 @@ def update_data(source_id, entity_name, row_index):
     return jsonify({"success": True})
 
 
+@data_bp.route("/data/<entity_name>/<int:row_index>", methods=["PUT"])
+def update_data_default(entity_name, row_index):
+    return update_data(_resolve_source_id(), entity_name, row_index)
+
+
 @data_bp.route("/data/<source_id>/<entity_name>/<int:row_index>", methods=["DELETE"])
 def delete_data(source_id, entity_name, row_index):
+    source_id = _resolve_source_id(source_id)
     fpath = _get_file_path(source_id, entity_name)
     if not fpath or not os.path.exists(fpath):
         return jsonify({"error": "数据文件不存在"}), 404
@@ -95,3 +122,8 @@ def delete_data(source_id, entity_name, row_index):
     df = df.drop(index=row_index).reset_index(drop=True)
     df.to_excel(fpath, index=False)
     return jsonify({"success": True})
+
+
+@data_bp.route("/data/<entity_name>/<int:row_index>", methods=["DELETE"])
+def delete_data_default(entity_name, row_index):
+    return delete_data(_resolve_source_id(), entity_name, row_index)

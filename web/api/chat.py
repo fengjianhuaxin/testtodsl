@@ -9,7 +9,7 @@ import traceback
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT_DIR)
 
-from flask import Blueprint, request, jsonify, Response, stream_with_context
+from flask import Blueprint, request, jsonify
 import config
 
 chat_bp = Blueprint("chat", __name__)
@@ -33,7 +33,6 @@ def _save_json(path, data):
 @chat_bp.route("/chat", methods=["POST"])
 def chat():
     """执行问答，返回完整结果"""
-    from web.app import query_required
     from web.auth import get_current_user
     from flask import session as flask_session
 
@@ -44,9 +43,8 @@ def chat():
     if not user.get("can_query"):
         return jsonify({"error": "您没有查询权限"}), 403
 
-    data = request.get_json()
+    data = request.get_json() or {}
     question = data.get("question", "").strip()
-    source = data.get("source")
 
     if not question:
         return jsonify({"error": "请输入问题"}), 400
@@ -67,7 +65,7 @@ def chat():
         import builtins
         builtins.print = capture_print
         try:
-            result = orch.run(question, source=source)
+            orch.run(question)
         finally:
             builtins.print = original_print
 
@@ -104,7 +102,6 @@ def chat():
             "id": chat_id,
             "question": question,
             "answer": result_data.get("answer", ""),
-            "source": source,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "user": user["username"],
             "run_id": orch.run_id,

@@ -68,23 +68,13 @@ class ValueResolveAgent(BaseAgent):
 
     def _resolve_source_ids(self, input_data: dict) -> list:
         dispatch = input_data.get("dispatch", {})
-        data_sources = dispatch.get("data_sources", []) if isinstance(dispatch, dict) else []
-        source_ids = [str(item).strip() for item in data_sources if str(item).strip()]
-        if source_ids:
-            return source_ids
-
-        preferred = str(input_data.get("preferred_source", "")).strip()
-        if preferred:
-            return [preferred]
-
-        intent = input_data.get("clarified_intent", {})
-        source_id = str(intent.get("data_source", "")).strip() if isinstance(intent, dict) else ""
-        if source_id and source_id != "all":
+        source_id = str(dispatch.get("source_id", "")).strip() if isinstance(dispatch, dict) else ""
+        if source_id:
             return [source_id]
 
-        available_sources = input_data.get("available_sources", {})
-        if isinstance(available_sources, dict) and available_sources:
-            return [next(iter(available_sources.keys()))]
+        source_id = str(input_data.get("source_id", "")).strip()
+        if source_id:
+            return [source_id]
         return []
 
     def _resolve_one_condition(self, condition: dict, question: str, source_ids: list) -> tuple[dict, dict]:

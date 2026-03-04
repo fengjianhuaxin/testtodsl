@@ -14,6 +14,13 @@ from prompts.prompt_manager import PromptManager
 mapping_bp = Blueprint("mapping", __name__)
 
 
+def _resolve_source_id(source_id: str | None = None) -> str:
+    sid = str(source_id or "").strip()
+    if sid:
+        return sid
+    return config.get_default_source_id()
+
+
 def _load_mapping(source_id: str):
     path = os.path.join(config.MAPPING_DIR, f"{source_id}_mapping.json")
     if not os.path.exists(path):
@@ -30,6 +37,15 @@ def _save_mapping(source_id: str, data: dict):
 
 @mapping_bp.route("/mapping/<source_id>", methods=["GET"])
 def get_mapping(source_id):
+    mapping = _load_mapping(_resolve_source_id(source_id))
+    if not mapping:
+        return jsonify({"error": "mapping not found"}), 404
+    return jsonify(mapping)
+
+
+@mapping_bp.route("/mapping", methods=["GET"])
+def get_mapping_default():
+    source_id = _resolve_source_id()
     mapping = _load_mapping(source_id)
     if not mapping:
         return jsonify({"error": "mapping not found"}), 404
@@ -40,6 +56,7 @@ def get_mapping(source_id):
 def update_entity_mapping(source_id, entity_name):
     """Create/update entity mapping and keep field semantics in data layer."""
     data = request.get_json() or {}
+    source_id = _resolve_source_id(source_id)
     mapping = _load_mapping(source_id)
     if not mapping:
         mapping = {
@@ -82,8 +99,14 @@ def update_entity_mapping(source_id, entity_name):
     return jsonify({"success": True})
 
 
+@mapping_bp.route("/mapping/entity/<entity_name>", methods=["PUT"])
+def update_entity_mapping_default(entity_name):
+    return update_entity_mapping(_resolve_source_id(), entity_name)
+
+
 @mapping_bp.route("/mapping/<source_id>/entity/<entity_name>", methods=["DELETE"])
 def delete_entity_mapping(source_id, entity_name):
+    source_id = _resolve_source_id(source_id)
     mapping = _load_mapping(source_id)
     if not mapping:
         return jsonify({"error": "mapping not found"}), 404
@@ -96,12 +119,17 @@ def delete_entity_mapping(source_id, entity_name):
     return jsonify({"success": True})
 
 
+@mapping_bp.route("/mapping/entity/<entity_name>", methods=["DELETE"])
+def delete_entity_mapping_default(entity_name):
+    return delete_entity_mapping(_resolve_source_id(), entity_name)
+
+
 @mapping_bp.route("/mapping/llm-analyze", methods=["POST"])
 def llm_analyze():
     """LLM pre-analysis: suggest field mapping from ontology + sheet columns."""
     data = request.get_json() or {}
     entity_name = data.get("entity_name")
-    source_id = data.get("source_id")
+    source_id = _resolve_source_id(data.get("source_id"))
     file_name = data.get("file_name")
 
     ontology_file = os.path.join(config.ONTOLOGY_DIR, "student_mgmt_ontology.json")

@@ -1,4 +1,4 @@
-"""Compute agent: execute query plan on configured data store."""
+﻿"""Compute agent: execute query plan on configured data store."""
 import pandas as pd
 
 from agents.base_agent import BaseAgent
@@ -6,7 +6,7 @@ from agents.base_agent import BaseAgent
 
 class ComputeAgent(BaseAgent):
     def __init__(self, data_store, mapping_manager, ontology_manager):
-        super().__init__("计算执行智能体", "执行查询，从数据源获取结果")
+        super().__init__("计算执行智能体", "执行查询并从数据存储获取结果")
         self.store = data_store
         self.mapping = mapping_manager
         self.ontology = ontology_manager
@@ -20,40 +20,26 @@ class ComputeAgent(BaseAgent):
         dispatch = input_data.get("dispatch", {})
         dsl_query = input_data.get("dsl_query", {})
 
-        self.log("开始执行计算...")
-        data_sources = dispatch.get("data_sources", ["xksx"])
-        all_results = {}
+        self.log("寮€濮嬫墽琛岃绠?..")
+        source_id = str(dispatch.get("source_id", "")).strip() or str(input_data.get("source_id", "")).strip()
 
-        for source_id in data_sources:
-            try:
-                sql_text = dsl_query.get(source_id, {}).get("sql")
-                if sql_text and hasattr(self.store, "execute_sql"):
-                    self.log(f"  数据源 {source_id}: 使用 SQL 执行")
-                    result = self.store.execute_sql(source_id, sql_text)
-                else:
-                    result = self._execute_for_source(
-                        source_id, query_plan, conditions, extracted_fields, calc_rule, query_spec
-                    )
+        try:
+            sql_text = dsl_query.get(source_id, {}).get("sql")
+            if sql_text and hasattr(self.store, "execute_sql"):
+                self.log(f"  数据源 {source_id}: 使用 SQL 执行")
+                result = self.store.execute_sql(source_id, sql_text)
+            else:
+                result = self._execute_for_source(
+                    source_id, query_plan, conditions, extracted_fields, calc_rule, query_spec
+                )
 
-                if not isinstance(result, pd.DataFrame):
-                    result = pd.DataFrame(result)
-                all_results[source_id] = result
-                self.log(f"  数据源 {source_id}: 获得 {len(result)} 条结果")
-            except Exception as error:
-                self.log(f"  数据源 {source_id} 执行失败: {error}")
-                all_results[source_id] = pd.DataFrame()
-
-        if len(all_results) == 1:
-            final_df = list(all_results.values())[0]
-        else:
-            frames = []
-            for source_id, dataframe in all_results.items():
-                if dataframe.empty:
-                    continue
-                tmp = dataframe.copy()
-                tmp["_source"] = source_id
-                frames.append(tmp)
-            final_df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+            if not isinstance(result, pd.DataFrame):
+                result = pd.DataFrame(result)
+            final_df = result
+            self.log(f"  数据源 {source_id}: 获得 {len(final_df)} 条结果")
+        except Exception as error:
+            self.log(f"  数据源 {source_id} 执行失败: {error}")
+            final_df = pd.DataFrame()
 
         self.log(f"计算执行完成: 共{len(final_df)}条结果")
         return {
@@ -226,16 +212,27 @@ class ComputeAgent(BaseAgent):
             previous_entity = entities[index - 1]["name"]
             join_df = self.store.load_table(source_id, entity_name)
 
-            join_key = self.ontology.resolve_join_fields(previous_entity, entity_name)
-            if not join_key:
-                join_key = self._find_join_field(dataframe, join_df)
-            if join_key:
+            join_key_pairs = self.ontology.resolve_join_field_pairs(previous_entity, entity_name)
+            if join_key_pairs:
+                left_on = [left for left, _ in join_key_pairs]
+                right_on = [right for _, right in join_key_pairs]
+                if len(left_on) == 1:
+                    left_on = left_on[0]
+                    right_on = right_on[0]
+            else:
+                fallback_join_key = self._find_join_field(dataframe, join_df)
+                if fallback_join_key:
+                    left_on, right_on = fallback_join_key
+                else:
+                    left_on, right_on = None, None
+
+            if left_on and right_on:
                 join_type = join_type_map.get((str(previous_entity).upper(), str(entity_name).upper()), "inner")
                 how_type = "left" if join_type == "left" else "inner"
                 dataframe = dataframe.merge(
                     join_df,
-                    left_on=join_key[0],
-                    right_on=join_key[1],
+                    left_on=left_on,
+                    right_on=right_on,
                     how=how_type,
                     suffixes=("", f"_{entity_name}"),
                 )

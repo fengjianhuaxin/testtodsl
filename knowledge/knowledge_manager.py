@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import config
 
 
 class KnowledgeManager:
@@ -194,7 +195,7 @@ class KnowledgeManager:
                 "keywords": keywords,
                 "sql": sql,
                 "target_entities": target_entities,
-                "data_source": str(item.get("data_source", "")).strip() or "xksx",
+                "data_source": str(item.get("data_source", "")).strip() or config.get_default_source_id(),
                 "enabled": enabled,
                 "priority": priority,
                 "description": str(item.get("description", "")).strip(),

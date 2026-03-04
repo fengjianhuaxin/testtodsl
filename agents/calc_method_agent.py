@@ -294,23 +294,13 @@ class CalcMethodAgent(BaseAgent):
 
     def _infer_source_ids(self, input_data: dict) -> list:
         dispatch = input_data.get("dispatch", {}) if isinstance(input_data, dict) else {}
-        data_sources = dispatch.get("data_sources", []) if isinstance(dispatch, dict) else []
-        source_ids = [str(item).strip() for item in data_sources if str(item).strip()]
-        if source_ids:
-            return source_ids
-
-        preferred = str(input_data.get("preferred_source", "")).strip() if isinstance(input_data, dict) else ""
-        if preferred:
-            return [preferred]
-
-        intent = input_data.get("clarified_intent", {}) if isinstance(input_data, dict) else {}
-        source_id = str(intent.get("data_source", "")).strip() if isinstance(intent, dict) else ""
-        if source_id and source_id != "all":
+        source_id = str(dispatch.get("source_id", "")).strip() if isinstance(dispatch, dict) else ""
+        if source_id:
             return [source_id]
 
-        available_sources = input_data.get("available_sources", {}) if isinstance(input_data, dict) else {}
-        if isinstance(available_sources, dict) and available_sources:
-            return [next(iter(available_sources.keys()))]
+        source_id = str(input_data.get("source_id", "")).strip() if isinstance(input_data, dict) else ""
+        if source_id:
+            return [source_id]
         return []
 
     def _get_consistent_rate_semantics(self, source_ids: list, entity: str, field: str) -> dict | None:
