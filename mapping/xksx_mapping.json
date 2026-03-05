@@ -3,7 +3,7 @@
     "source_id": "xksx",
     "description": "Imported from 人口领域表结构说明_户籍、出生、殡葬、婚姻.xlsx (sheet=人口库表结构)",
     "table_mappings": {
-        "B_SHARE_PPL_BAS_HUKOU_REG": {
+        "HUKOU_REG": {
             "table_name": "b_share_ppl_bas_hukou_reg",
             "file_name": "b_share_ppl_bas_hukou_reg.xlsx",
             "field_mappings": {
@@ -44,7 +44,7 @@
             },
             "field_value_semantics": {}
         },
-        "B_SHARE_PPL_BAS_BIRTH_INFO": {
+        "BIRTH_INFO": {
             "table_name": "b_share_ppl_bas_birth_info",
             "file_name": "b_share_ppl_bas_birth_info.xlsx",
             "field_mappings": {
@@ -71,7 +71,7 @@
             },
             "field_value_semantics": {}
         },
-        "B_SHARE_PPL_BAS_FUNERAL_INFO": {
+        "FUNERAL_INFO": {
             "table_name": "b_share_ppl_bas_funeral_info",
             "file_name": "b_share_ppl_bas_funeral_info.xlsx",
             "field_mappings": {
@@ -88,7 +88,7 @@
             },
             "field_value_semantics": {}
         },
-        "B_SHARE_PPL_REL_MARRIAGE_REL": {
+        "MARRIAGE_REL": {
             "table_name": "b_share_ppl_rel_marriage_rel",
             "file_name": "b_share_ppl_rel_marriage_rel.xlsx",
             "field_mappings": {
@@ -110,7 +110,7 @@
             },
             "field_value_semantics": {}
         },
-        "B_SHARE_PPL_REL_MARRIAGE_REL_HIS": {
+        "MARRIAGE_REL_HIS": {
             "table_name": "b_share_ppl_rel_marriage_rel_his",
             "file_name": "b_share_ppl_rel_marriage_rel_his.xlsx",
             "field_mappings": {

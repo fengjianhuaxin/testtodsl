@@ -3,7 +3,7 @@
     "version": "1.0",
     "description": "Imported from 人口领域表结构说明_户籍、出生、殡葬、婚姻.xlsx (sheet=人口库表结构)",
     "entities": {
-        "B_SHARE_PPL_BAS_HUKOU_REG": {
+        "HUKOU_REG": {
             "label": "户籍登记信息",
             "description": "Imported from 人口领域表结构说明_户籍、出生、殡葬、婚姻.xlsx::人口库表结构",
             "aliases": [
@@ -321,7 +321,7 @@
                 }
             }
         },
-        "B_SHARE_PPL_BAS_BIRTH_INFO": {
+        "BIRTH_INFO": {
             "label": "出生信息",
             "description": "Imported from 人口领域表结构说明_户籍、出生、殡葬、婚姻.xlsx::人口库表结构",
             "aliases": [
@@ -512,7 +512,7 @@
                 }
             }
         },
-        "B_SHARE_PPL_BAS_FUNERAL_INFO": {
+        "FUNERAL_INFO": {
             "label": "殡葬信息",
             "description": "Imported from 人口领域表结构说明_户籍、出生、殡葬、婚姻.xlsx::人口库表结构",
             "aliases": [
@@ -614,7 +614,7 @@
                 }
             }
         },
-        "B_SHARE_PPL_REL_MARRIAGE_REL": {
+        "MARRIAGE_REL": {
             "label": "婚姻关系",
             "description": "Imported from 人口领域表结构说明_户籍、出生、殡葬、婚姻.xlsx::人口库表结构",
             "aliases": [
@@ -761,7 +761,7 @@
                 }
             }
         },
-        "B_SHARE_PPL_REL_MARRIAGE_REL_HIS": {
+        "MARRIAGE_REL_HIS": {
             "label": "婚姻关系历史记录",
             "description": "Imported from 人口领域表结构说明_户籍、出生、殡葬、婚姻.xlsx::人口库表结构",
             "aliases": [
@@ -991,80 +991,80 @@
     },
     "relations": [
         {
-            "from": "B_SHARE_PPL_BAS_HUKOU_REG",
-            "to": "B_SHARE_PPL_BAS_BIRTH_INFO",
+            "from": "HUKOU_REG",
+            "to": "BIRTH_INFO",
             "type": "identity_match",
             "label": "证件关联",
             "from_field": "CERT_NO",
             "to_field": "CERT_NO"
         },
         {
-            "from": "B_SHARE_PPL_BAS_HUKOU_REG",
-            "to": "B_SHARE_PPL_BAS_FUNERAL_INFO",
+            "from": "HUKOU_REG",
+            "to": "FUNERAL_INFO",
             "type": "identity_match",
             "label": "证件关联",
             "from_field": "CERT_TYPE,CERT_NO",
             "to_field": "CERT_TYPE,CERT_NO"
         },
         {
-            "from": "B_SHARE_PPL_BAS_HUKOU_REG",
-            "to": "B_SHARE_PPL_REL_MARRIAGE_REL",
+            "from": "HUKOU_REG",
+            "to": "MARRIAGE_REL",
             "type": "identity_match",
             "label": "证件关联",
             "from_field": "CERT_TYPE,CERT_NO",
             "to_field": "CERT_TYPE,CERT_NO"
         },
         {
-            "from": "B_SHARE_PPL_BAS_HUKOU_REG",
-            "to": "B_SHARE_PPL_REL_MARRIAGE_REL_HIS",
+            "from": "HUKOU_REG",
+            "to": "MARRIAGE_REL_HIS",
             "type": "identity_match",
             "label": "证件关联",
             "from_field": "CERT_TYPE,CERT_NO",
             "to_field": "CERT_TYPE,CERT_NO"
         },
         {
-            "from": "B_SHARE_PPL_BAS_BIRTH_INFO",
-            "to": "B_SHARE_PPL_BAS_FUNERAL_INFO",
+            "from": "BIRTH_INFO",
+            "to": "FUNERAL_INFO",
             "type": "identity_match",
             "label": "证件关联",
             "from_field": "CERT_NO",
             "to_field": "CERT_NO"
         },
         {
-            "from": "B_SHARE_PPL_BAS_BIRTH_INFO",
-            "to": "B_SHARE_PPL_REL_MARRIAGE_REL",
+            "from": "BIRTH_INFO",
+            "to": "MARRIAGE_REL",
             "type": "identity_match",
             "label": "证件关联",
             "from_field": "CERT_NO",
             "to_field": "CERT_NO"
         },
         {
-            "from": "B_SHARE_PPL_BAS_BIRTH_INFO",
-            "to": "B_SHARE_PPL_REL_MARRIAGE_REL_HIS",
+            "from": "BIRTH_INFO",
+            "to": "MARRIAGE_REL_HIS",
             "type": "identity_match",
             "label": "证件关联",
             "from_field": "CERT_NO",
             "to_field": "CERT_NO"
         },
         {
-            "from": "B_SHARE_PPL_BAS_FUNERAL_INFO",
-            "to": "B_SHARE_PPL_REL_MARRIAGE_REL",
+            "from": "FUNERAL_INFO",
+            "to": "MARRIAGE_REL",
             "type": "identity_match",
             "label": "证件关联",
             "from_field": "CERT_TYPE,CERT_NO",
             "to_field": "CERT_TYPE,CERT_NO"
         },
         {
-            "from": "B_SHARE_PPL_BAS_FUNERAL_INFO",
-            "to": "B_SHARE_PPL_REL_MARRIAGE_REL_HIS",
+            "from": "FUNERAL_INFO",
+            "to": "MARRIAGE_REL_HIS",
             "type": "identity_match",
             "label": "证件关联",
             "from_field": "CERT_TYPE,CERT_NO",
             "to_field": "CERT_TYPE,CERT_NO"
         },
         {
-            "from": "B_SHARE_PPL_REL_MARRIAGE_REL",
-            "to": "B_SHARE_PPL_REL_MARRIAGE_REL_HIS",
+            "from": "MARRIAGE_REL",
+            "to": "MARRIAGE_REL_HIS",
             "type": "identity_match",
             "label": "证件关联",
             "from_field": "CERT_TYPE,CERT_NO",

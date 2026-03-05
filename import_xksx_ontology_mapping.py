@@ -40,6 +40,15 @@ TABLE_HEADER_ALIAS = {
     "备注": "remark",
 }
 
+# Friendly ontology entity keys for this renkou domain.
+ENTITY_KEY_ALIAS_MAP = {
+    "b_share_ppl_bas_birth_info": "BIRTH_INFO",
+    "b_share_ppl_bas_funeral_info": "FUNERAL_INFO",
+    "b_share_ppl_bas_hukou_reg": "HUKOU_REG",
+    "b_share_ppl_rel_marriage_rel": "MARRIAGE_REL",
+    "b_share_ppl_rel_marriage_rel_his": "MARRIAGE_REL_HIS",
+}
+
 
 def _clean_text(value: Any) -> str:
     if value is None:
@@ -64,6 +73,22 @@ def _dedupe_keep_order(values: list[str]) -> list[str]:
         seen.add(text)
         result.append(text)
     return result
+
+
+def _resolve_entity_key(table_en: str, existing_keys: set[str]) -> str:
+    table_name = str(table_en or "").strip()
+    alias = ENTITY_KEY_ALIAS_MAP.get(table_name.lower())
+    candidate = str(alias or table_name).strip().upper()
+    if not candidate:
+        candidate = "ENTITY"
+
+    if candidate not in existing_keys:
+        return candidate
+
+    index = 2
+    while f"{candidate}_{index}" in existing_keys:
+        index += 1
+    return f"{candidate}_{index}"
 
 
 def _infer_type(field_name: str) -> str:
@@ -175,6 +200,7 @@ def _load_table_structure_book(excel_file: pd.ExcelFile) -> tuple[str, OrderedDi
             continue
 
         tables: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        table_name_to_key: dict[str, str] = {}
         for _, row in normalized.iterrows():
             table_cn = _clean_text(row.get("table_cn"))
             table_en = _clean_text(row.get("table_en"))
@@ -185,7 +211,11 @@ def _load_table_structure_book(excel_file: pd.ExcelFile) -> tuple[str, OrderedDi
             if not table_en or not field_en:
                 continue
 
-            entity_key = table_en.upper()
+            table_en_lower = table_en.lower()
+            entity_key = table_name_to_key.get(table_en_lower)
+            if not entity_key:
+                entity_key = _resolve_entity_key(table_en, set(tables.keys()))
+                table_name_to_key[table_en_lower] = entity_key
             field_key = field_en.upper()
             if entity_key not in tables:
                 tables[entity_key] = {

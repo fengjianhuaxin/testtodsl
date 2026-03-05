@@ -65,7 +65,7 @@ async function loadOntologyModule() {
         const onto = await API.getOntology();
         renderEntityList(onto.entities);
         renderOntologyGraph(onto);
-        renderRelationList(onto.relations);
+        renderRelationList(onto.relations, onto.entities || {});
     } catch (e) { showToast('加载本体失败', 'error'); }
 }
 
@@ -215,15 +215,19 @@ function renderOntologyGraph(onto) {
     });
 }
 
-function renderRelationList(relations) {
+function renderRelationList(relations, entities = {}) {
     const el = document.getElementById('relationList');
     if (!relations || !relations.length) { el.innerHTML = '<div style="color:var(--text-muted);padding:12px">无关系</div>'; return; }
     let html = '<div class="table-scroll relation-table-scroll"><table class="data-table"><thead><tr><th>源实体</th><th>目标实体</th><th>关系</th><th>关联字段</th><th>操作</th></tr></thead><tbody>';
     relations.forEach((r, i) => {
+        const fromLabel = entities?.[r.from]?.label || r.from || '';
+        const toLabel = entities?.[r.to]?.label || r.to || '';
+        const fromDisplay = fromLabel === r.from ? escHtml(fromLabel) : `${escHtml(fromLabel)}<div style="font-size:11px;color:var(--text-muted)">${escHtml(r.from || '')}</div>`;
+        const toDisplay = toLabel === r.to ? escHtml(toLabel) : `${escHtml(toLabel)}<div style="font-size:11px;color:var(--text-muted)">${escHtml(r.to || '')}</div>`;
         const joinFields = (r.from_field && r.to_field)
             ? `${escHtml(r.from_field)} = ${escHtml(r.to_field)}`
             : '-';
-        html += `<tr><td>${r.from}</td><td>${r.to}</td><td>${r.label} (${r.type})</td><td>${joinFields}</td>
+        html += `<tr><td>${fromDisplay}</td><td>${toDisplay}</td><td>${r.label} (${r.type})</td><td>${joinFields}</td>
             <td>
                 <button class="btn btn-secondary btn-sm" onclick="showEditRelationModal(${i})">编辑</button>
                 <button class="btn btn-danger btn-sm" onclick="deleteRelationAction(${i})">删除</button>
