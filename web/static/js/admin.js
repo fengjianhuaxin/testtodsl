@@ -840,7 +840,10 @@ async function saveDBConfigAction() {
 async function testDBConfigAction() {
     try {
         const payload = collectDBConfigForm();
-        const result = await API.testDBConfig({ mysql: payload.mysql });
+        const result = await API.testDBConfig({
+            keep_password: payload.keep_password,
+            mysql: payload.mysql
+        });
         showToast(result.message || '连接成功', 'success');
     } catch (e) {
         showToast(e.message || '连接失败', 'error');

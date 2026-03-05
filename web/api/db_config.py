@@ -70,7 +70,12 @@ def save_db_config():
 def test_db_config():
     payload = request.get_json() or {}
     current = config.load_runtime_db_config()
-    mysql_cfg = _sanitize_mysql(payload.get("mysql", {}), current.get("mysql", {}))
+    input_mysql = payload.get("mysql", {})
+    keep_password = bool(payload.get("keep_password", True))
+
+    mysql_cfg = _sanitize_mysql(input_mysql, current.get("mysql", {}))
+    if keep_password and not str(input_mysql.get("password", "")).strip():
+        mysql_cfg["password"] = current.get("mysql", {}).get("password", "")
 
     try:
         import pymysql
