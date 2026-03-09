@@ -1,4 +1,4 @@
-"""Calc method agent (Step C)."""
+﻿"""Calc method agent (Step C)."""
 import re
 
 from agents.base_agent import BaseAgent
@@ -756,6 +756,9 @@ class CalcMethodAgent(BaseAgent):
             field_name = str(item.get("field", "")).strip()
             field_type = str(item.get("type", "")).strip().lower()
             if not field_name:
+                continue
+            # Skip synthetic placeholders such as __count__ produced by model hallucination.
+            if field_name.startswith("__") and field_name.endswith("__"):
                 continue
             if field_name.upper() in dimension_names:
                 continue

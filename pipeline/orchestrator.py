@@ -1,6 +1,7 @@
 ﻿"""Pipeline orchestrator for multi-agent NL2DSL workflow."""
 import json
 import os
+import re
 import time
 
 import pandas as pd
@@ -137,6 +138,8 @@ class Orchestrator:
 
     def _run_multi_tasks(self, tasks: list, split_analysis: dict, base_pipeline_data: dict, intermediates: dict, normalized_question: str) -> dict:
         task_results = []
+        task_result_map = {}
+        task_vars = {}
         intermediates["multi_task"] = {
             "enabled": True,
             "task_count": len(tasks),
@@ -145,9 +148,63 @@ class Orchestrator:
 
         for idx, task in enumerate(tasks, start=1):
             task_id = str(task.get("task_id", f"task_{idx}")).strip() or f"task_{idx}"
-            task_question = str(task.get("question", "")).strip() or normalized_question
+            raw_question = str(task.get("question", "")).strip() or normalized_question
+
+            depends_on = task.get("depends_on", [])
+            if isinstance(depends_on, str):
+                depends_on = [depends_on]
+            if not isinstance(depends_on, list):
+                depends_on = []
+            depends_on = [str(item).strip() for item in depends_on if str(item).strip()]
+
+            bind_specs = self._normalize_bind_specs(task.get("bind_output", []))
+            bind_vars, bind_issues = self._resolve_bind_vars(bind_specs, task_result_map)
+            task_vars.update(bind_vars)
+            task_question = self._render_task_question(raw_question, task_vars)
+
+            unresolved_vars = re.findall(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}", task_question)
+            missing_deps = [dep for dep in depends_on if dep not in task_result_map]
+
+            if missing_deps or bind_issues or unresolved_vars:
+                issues = []
+                if missing_deps:
+                    issues.append(f"missing dependencies: {missing_deps}")
+                if bind_issues:
+                    issues.extend(bind_issues)
+                if unresolved_vars:
+                    issues.append(f"unresolved vars: {unresolved_vars}")
+
+                skip_reason = " | ".join(issues)
+                print(f"\n{'-' * 60}")
+                print(f"Task {idx}/{len(tasks)} [{task_id}] skipped: {skip_reason}")
+                print(f"{'-' * 60}")
+
+                skipped = {
+                    "task_id": task_id,
+                    "question": task_question,
+                    "answer": f"Skipped due to: {skip_reason}",
+                    "compute_result": [],
+                    "dsl_query": {},
+                    "quality_check": {"passed": False, "issues": issues},
+                    "chart_path": None,
+                    "skipped": True,
+                }
+                task_results.append(skipped)
+                task_result_map[task_id] = skipped
+                intermediates["multi_task"]["tasks"].append(
+                    {
+                        "task_id": task_id,
+                        "question": task_question,
+                        "depends_on": depends_on,
+                        "bind_output": bind_specs,
+                        "skipped": True,
+                        "skip_reason": skip_reason,
+                    }
+                )
+                continue
+
             print(f"\n{'-' * 60}")
-            print(f"子任务 {idx}/{len(tasks)} [{task_id}]: {task_question}")
+            print(f"Task {idx}/{len(tasks)} [{task_id}]: {task_question}")
             print(f"{'-' * 60}")
 
             task_pipeline = {
@@ -158,6 +215,8 @@ class Orchestrator:
                     "task_id": task_id,
                     "index": idx,
                     "question": task_question,
+                    "depends_on": depends_on,
+                    "bind_output": bind_specs,
                 },
             }
             task_intermediates = {}
@@ -167,21 +226,23 @@ class Orchestrator:
                 {
                     "task_id": task_id,
                     "question": task_question,
+                    "depends_on": depends_on,
+                    "bind_output": bind_specs,
                     "steps": task_intermediates,
                 }
             )
 
-            task_results.append(
-                {
-                    "task_id": task_id,
-                    "question": task_question,
-                    "answer": final_task_data.get("answer", ""),
-                    "compute_result": final_task_data.get("compute_result", []),
-                    "dsl_query": final_task_data.get("dsl_query", {}),
-                    "quality_check": final_task_data.get("quality_check", {}),
-                    "chart_path": final_task_data.get("chart_path"),
-                }
-            )
+            task_result = {
+                "task_id": task_id,
+                "question": task_question,
+                "answer": final_task_data.get("answer", ""),
+                "compute_result": final_task_data.get("compute_result", []),
+                "dsl_query": final_task_data.get("dsl_query", {}),
+                "quality_check": final_task_data.get("quality_check", {}),
+                "chart_path": final_task_data.get("chart_path"),
+            }
+            task_results.append(task_result)
+            task_result_map[task_id] = task_result
 
         combined_answer = self._build_multi_answer(task_results)
         combined_compute_result = []
@@ -220,6 +281,97 @@ class Orchestrator:
             "answer": combined_answer,
             "chart_path": None,
         }
+
+    @staticmethod
+    def _normalize_bind_specs(bind_output) -> list:
+        if isinstance(bind_output, dict):
+            bind_output = [bind_output]
+        if not isinstance(bind_output, list):
+            return []
+
+        specs = []
+        for item in bind_output:
+            if not isinstance(item, dict):
+                continue
+            var_name = str(item.get("var", "")).strip()
+            if not var_name:
+                continue
+            specs.append(
+                {
+                    "from_task": str(item.get("from_task", "")).strip(),
+                    "field": str(item.get("field", "")).strip(),
+                    "var": var_name,
+                }
+            )
+        return specs
+
+    @staticmethod
+    def _extract_bind_value(rows: list, field: str) -> str:
+        if not isinstance(rows, list) or not rows:
+            return ""
+        first_row = rows[0]
+        if not isinstance(first_row, dict) or not first_row:
+            return ""
+
+        target_field = str(field or "").strip()
+        if target_field:
+            if target_field in first_row:
+                value = first_row.get(target_field)
+                return "" if value is None else str(value).strip()
+            for key, value in first_row.items():
+                if str(key).strip().lower() == target_field.lower():
+                    return "" if value is None else str(value).strip()
+
+        # fallback: first non-meta column
+        for key, value in first_row.items():
+            if str(key).startswith("_"):
+                continue
+            if value is None:
+                continue
+            return str(value).strip()
+        return ""
+
+    def _resolve_bind_vars(self, bind_specs: list, task_result_map: dict) -> tuple[dict, list]:
+        resolved = {}
+        issues = []
+        for spec in bind_specs:
+            from_task = str(spec.get("from_task", "")).strip()
+            field = str(spec.get("field", "")).strip()
+            var_name = str(spec.get("var", "")).strip()
+            if not var_name:
+                continue
+            if not from_task:
+                issues.append(f"bind_output ?? from_task: var={var_name}")
+                continue
+            source = task_result_map.get(from_task)
+            if not isinstance(source, dict):
+                issues.append(f"bind_output source task not ready: {from_task}")
+                continue
+            rows = source.get("compute_result", [])
+            value = self._extract_bind_value(rows, field)
+            if not value:
+                field_hint = field or "<first_column>"
+                issues.append(f"failed to bind var {var_name}: from_task={from_task}, field={field_hint}")
+                continue
+            resolved[var_name] = value
+        return resolved, issues
+
+    @staticmethod
+    def _render_task_question(question_template: str, variables: dict) -> str:
+        text = str(question_template or "").strip()
+        if not text:
+            return text
+        if not isinstance(variables, dict) or not variables:
+            return text
+
+        def repl(match):
+            var_name = match.group(1)
+            value = variables.get(var_name)
+            if value is None:
+                return match.group(0)
+            return str(value)
+
+        return re.sub(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}", repl, text)
 
     def _run_agents(self, pipeline_data: dict, intermediates: dict) -> dict:
         current = pipeline_data

@@ -40,15 +40,22 @@ $relation_catalog
         },
         "intent_clarify_system": {
             "name": "意图澄清系统提示词",
-            "description": "步骤01：通用意图澄清（实体/条件/输出字段/计算类型）",
-            "template": """你是一个意图澄清智能体，负责把用户问题解析成结构化 JSON。
-你掌握的本体知识如下：
+            "description": "步骤01：意图澄清（实体/条件/输出/计算）",
+            "template": """你是一个意图澄清智能体，请把用户问题解析成结构化 JSON。
+本体上下文：
 $ontology_desc
 
 $knowledge_block
 
-请严格返回 JSON（不要输出解释文字），格式如下：
+请严格只返回 JSON（不要输出解释文字），格式如下：
 {
+  "thought": "4步以内的本体自检过程，中文简述",
+  "self_check": {
+    "primary_entity_in_target": true,
+    "fields_exist_in_ontology": true,
+    "relation_consistent": true,
+    "issues": []
+  },
   "clarified_question": "澄清后的问题",
   "target_entities": ["实体名"],
   "primary_entity": "主实体名",
@@ -65,44 +72,34 @@ $knowledge_block
     "order_dir": "asc或desc",
     "limit": 10
   },
-  "data_source": "all或具体数据源ID",
+  "data_source": "all或数据源ID",
   "entity_instances": [
     {"id":"实例ID","entity":"实体名","role":"角色说明，可选"}
   ],
   "relations": [
-    {"left_instance":"实例ID","left_field":"属性名或逗号分隔属性名","right_instance":"实例ID","right_field":"属性名或逗号分隔属性名","join_type":"inner|left"}
+    {"left_instance":"实例ID","left_field":"属性名","right_instance":"实例ID","right_field":"属性名","join_type":"inner|left"}
   ]
 }
 
 规则：
-1) “各/分别/每个/分布/按XX”这类分组语义，需考虑给出 group_by，并把分组字段放入 output_fields。
-2) “最高/最多/最大” => order_by=__metric__, order_dir=desc, limit=1。
-3) “最低/最少/最小” => order_by=__metric__, order_dir=asc, limit=1。
-4) 如果是 sum/avg/max/min 且同时询问“各XX分别”，优先按维度字段分组，不要仅返回全局汇总。
-5) data_source 除非用户明确指定，否则一律为 all。
-6) 时间条件规则（适用于所有 date/datetime 字段）：
-   - 用户提到“YYYY年”，不要用 contains/like。
-   - 必须在同一时间字段输出两条条件：>= YYYY-01-01 00:00:00 且 <= YYYY-12-31 23:59:59。
-   - 用户提到“YYYY年MM月”时，输出该月起止时间范围。
-   - 只有字段明确是字符串且不是时间字段时，才允许 contains/like。
-7) conditions.value 必须保留用户语义文本，不要提前转成数据库编码值。
-8) 必须输出 primary_entity。
-9) 多实体时，primary_entity 必须是 target_entities 的成员，且代表问题主语义主体。
-10) 单实体时，primary_entity 必须等于 target_entities[0]。
-11) 若问题询问某个特定对象（例如“X的…是什么”），primary_entity 应设置为被询问对象 X 对应的实体，而不是仅作为筛选条件的实体。
-12) 若需要复合连接键，可在 relations 中使用逗号分隔字段（如 "证件类型,证件号码"），且左右字段数必须一一对应，禁止把整个逗号串当成单字段名。
-13) 严格校验：conditions 和 output_fields 中的 field 必须 100% 存在于上述提供的属性列表中。
-14) 输出契约补充（说明为中文，字段键名保持英文）：
-   - JSON 必须包含字段 primary_entity。
-   - primary_entity 必须是 target_entities 的成员；无法判断时可留空。
-   - target_entities/primary_entity/conditions.entity/output_fields.entity 使用中文实体名。
-   - conditions.field/output_fields.field/calc_params.group_by/order_by 使用中文属性名或“实体名.属性名”。
-   - 涉及关系穿透/自连接时，可输出可选字段：
-     entity_instances: [{"id":"inst_id","entity":"实体名","role":"可选角色"}]
-     relations: [{"left_instance":"inst1","left_field":"属性名A","right_instance":"inst2","right_field":"属性名B","join_type":"inner|left"}]
-   - conditions/output_fields 可使用 entity_instance 绑定到具体实例。
-   - 如果 relations.left_field/right_field 使用逗号分隔复合键（如 证件类型,证件号码），左右字段必须一一对应，不能把整个逗号串当作单字段名。
-15) target_entities 只能从以下实体中选择（中文名）: $allowed_target_entities。""",
+1) JSON 键名固定英文；实体名/属性名/关系名/说明使用中文。
+2) target_entities、primary_entity、conditions.entity、output_fields.entity 只能来自本体实体。
+3) conditions.field、output_fields.field、calc_params.group_by/order_by 只能来自本体属性。
+   禁止输出伪字段：__count__、__sum__、__metric__。
+4) 若主实体不含目标属性，可引入关联实体并按本体关系补齐。
+   若目标属性存在于任一 1 跳关联实体，必须选择该实体与属性，不得判为不可解。
+5) 仅当允许范围内所有实体都不存在目标属性时，才允许 output_fields 为空或标记 unresolved。
+6) 禁止臆造连接键；若本体未给出连接键，relations 默认输出空数组。
+7) 仅在“同实体多实例/自连接”确有必要时输出 entity_instances 与 relations。
+8) 必须输出 thought 与 self_check；self_check 三个布尔值必须与实际内容一致。
+9) “各/分别/每个/分布/按XX”这类分组语义，需给出 group_by，并把分组字段放入 output_fields。
+10) “最高/最多/最大” => order_by=__metric__, order_dir=desc, limit=1；“最低/最少/最小”相反。
+11) data_source 默认 all，只有用户明确指定时才改。
+12) 时间条件（date/datetime）按时间范围表达，禁止 contains/like。
+13) conditions.value 保留用户原始语义，不提前映射数据库编码。
+14) primary_entity 必须属于 target_entities；单实体时等于 target_entities[0]。
+15) target_entities 只能从以下实体中选择（中文名）：$allowed_target_entities。
+""",
         },
         "intent_clarify_user": {
             "name": "意图澄清用户提示词",
@@ -183,18 +180,51 @@ $prop_desc
         },
         "question_split_system": {
             "name": "问题拆解-系统提示词",
-            "description": "步骤00：任务规划（single_sql/multi_sql）",
-            "template": """你是任务规划器。请先判断用户问题是否需要拆成多个独立查询任务。
-原则：single_sql 优先，只要能用一条 SQL 完成，就不要拆。
-只有确实独立且无法同 SQL 表达时，才用 multi_sql。
+            "description": "步骤00：任务规划（single_sql/multi_sql_independent/multi_sql_dependent）",
+            "template": """你是任务规划器。请判断用户问题属于以下哪种模式：
+1) single_sql：一条 SQL 可直接回答；
+2) multi_sql_independent：多个子问题彼此独立；
+3) multi_sql_dependent：后续子问题依赖前一步结果（链式推理）。
+
+核心原则：
+1) single_sql 优先：能用一条 SQL 回答就不拆分。
+2) 依赖推理必须拆分：出现“先求中间对象，再查询该对象属性”的语义时，必须用 multi_sql_dependent。
+3) 身份终点问句不拆分：若问题本身是“X的母亲/父亲/配偶是谁(或叫什么/姓名是什么)”，这是终点查询，必须 single_sql。
+4) 只有当第二问明确依赖第一问结果（例如“其/她/他/{变量名}”）时，才允许 multi_sql_dependent。
+
+判定示例：
+- single_sql: “王芳的母亲是谁”
+- multi_sql_dependent: “王芳的母亲出生日期是什么时候”（可拆为“王芳的母亲是谁” + “{mother_name}的出生日期是什么时候”）
+
 严格输出 JSON：
 {
   "is_multi_task": true/false,
-  "execution_mode": "single_sql" or "multi_sql",
-  "tasks": ["子问题1", "子问题2"],
+  "execution_mode": "single_sql" or "multi_sql_independent" or "multi_sql_dependent",
+  "tasks": [
+    {
+      "task_id": "task_1",
+      "question": "子问题文本",
+      "depends_on": [],
+      "bind_output": []
+    },
+    {
+      "task_id": "task_2",
+      "question": "{变量名}的出生日期是什么时候",
+      "depends_on": ["task_1"],
+      "bind_output": [
+        {"from_task":"task_1","field":"字段名","var":"变量名"}
+      ]
+    }
+  ],
   "reason": "简短原因",
   "confidence": 0到1
-}""",
+}
+
+约束：
+1) tasks 按执行顺序输出；depends_on 只能引用已出现的 task_id。
+2) 若 execution_mode=single_sql，tasks 只保留 1 条。
+3) 若 execution_mode=multi_sql_dependent，至少 1 个任务必须包含 depends_on 或 bind_output。
+4) 如果第二问需要引用上一步结果，question 中使用 {var} 占位符。""",
         },
         "question_split_user": {
             "name": "问题拆解-用户提示词",
@@ -367,4 +397,6 @@ $options_text""",
             del prompts[key]
         data["prompts"] = prompts
         self._save(data)
+
+
 

@@ -115,13 +115,21 @@ class IntentClarifyAgent(BaseAgent):
             selection_entity_labels = [self._entity_label(item) for item in selection_entity_keys]
             if selection_entity_labels:
                 allowed_target_entities = "、".join(selection_entity_labels)
-        default_system_template = """你是一个意图澄清智能体，负责把用户问题解析成结构化JSON。
-你掌握的本体知识如下：
+        default_system_template = """你是一个意图澄清智能体，请把用户问题解析成结构化 JSON。
+本体上下文：
 $ontology_desc
+
 $knowledge_block
 
-请严格返回JSON（不要输出解释文字），格式如下：
+请严格只返回 JSON（不要输出解释文字），格式如下：
 {
+  "thought": "4步以内的本体自检过程，中文简述",
+  "self_check": {
+    "primary_entity_in_target": true,
+    "fields_exist_in_ontology": true,
+    "relation_consistent": true,
+    "issues": []
+  },
   "clarified_question": "澄清后的问题",
   "target_entities": ["实体名"],
   "primary_entity": "主实体名",
@@ -141,23 +149,23 @@ $knowledge_block
 }
 
 规则：
-1) “各/分别/每个/按XX”这类分组语义，必须给出group_by，并把分组字段放入output_fields。
-2) “最高/最大”=> order_by=__metric__, order_dir=desc, limit=1。
-3) “最低/最小”=> order_by=__metric__, order_dir=asc, limit=1。
-4) 条件值保留用户语义文本，不要提前映射为数据库编码。
-5) 必须输出primary_entity。
-6) 严格校验：conditions 和 output_fields 中的 field 必须 100% 存在于上述提供的属性列表中。
-7) 输出契约补充（说明为中文，字段键名保持英文）：
-   - JSON 必须包含字段 primary_entity。
-   - primary_entity 必须是 target_entities 的成员；无法判断时可留空。
-   - target_entities/primary_entity/conditions.entity/output_fields.entity 使用中文实体名。
-   - conditions.field/output_fields.field/calc_params.group_by/order_by 使用中文属性名或“实体名.属性名”。
-   - 涉及关系穿透/自连接时，可输出可选字段：
-     entity_instances: [{"id":"inst_id","entity":"实体名","role":"可选角色"}]
-     relations: [{"left_instance":"inst1","left_field":"属性名A","right_instance":"inst2","right_field":"属性名B","join_type":"inner|left"}]
-   - conditions/output_fields 可使用 entity_instance 绑定到具体实例。
-   - 如果 relations.left_field/right_field 使用逗号分隔复合键（如 证件类型,证件号码），左右字段必须一一对应，不能把整个逗号串当作单字段名。
-8) target_entities 只能从以下实体中选择（中文名）: $allowed_target_entities。"""
+1) JSON 键名固定英文；实体名/属性名/关系名/说明使用中文。
+2) target_entities、primary_entity、conditions.entity、output_fields.entity 只能来自本体实体。
+3) conditions.field、output_fields.field、calc_params.group_by/order_by 只能来自本体属性。
+   禁止输出伪字段：__count__、__sum__、__metric__。
+4) 若主实体不含目标属性，可引入关联实体并按本体关系补齐。
+   若目标属性存在于任一 1 跳关联实体，必须选择该实体与属性，不得判为不可解。
+5) 仅当允许范围内所有实体都不存在目标属性时，才允许 output_fields 为空或标记 unresolved。
+6) 禁止臆造连接键；若本体未给出连接键，relations 默认输出空数组。
+7) 仅在“同实体多实例/自连接”确有必要时输出 entity_instances 与 relations。
+8) 必须输出 thought 与 self_check；self_check 三个布尔值必须与实际内容一致。
+9) “各/分别/每个/分布/按XX”这类分组语义，需给出 group_by，并把分组字段放入 output_fields。
+10) “最高/最多/最大” => order_by=__metric__, order_dir=desc, limit=1；“最低/最少/最小”相反。
+11) 时间条件（date/datetime）按时间范围表达，禁止 contains/like。
+12) conditions.value 保留用户原始语义，不提前映射数据库编码。
+13) primary_entity 必须属于 target_entities；单实体时等于 target_entities[0]。
+14) target_entities 只能从以下实体中选择（中文名）：$allowed_target_entities。
+"""
 
         system_prompt = self._render_prompt(
             key="intent_clarify_system",
@@ -515,7 +523,8 @@ $relation_catalog
         suggested = self.ontology.suggest_property_name(entity_key, field_part)
         if suggested:
             return suggested
-        return field_part
+        # For known entities, reject unknown properties to prevent pseudo fields from leaking downstream.
+        return ""
 
     def _normalize_calc_param_fields(
         self,
@@ -835,6 +844,13 @@ $relation_catalog
                 "right_field": right_field,
                 "join_type": join_type,
             })
+
+        instance_entities = {item["entity"] for item in entity_instances}
+        if entity_instances and not relations and any(entity not in instance_entities for entity in target_entities):
+            # Drop partial instance hints to avoid collapsing multi-entity planning.
+            entity_instances = []
+            instance_id_set = set()
+            instance_entity_by_id = {}
 
         instance_by_id = {item["id"]: item for item in entity_instances}
         default_instance_by_entity = {}
@@ -1690,4 +1706,5 @@ $relation_catalog
             return json.dumps(payload, ensure_ascii=False)
         except Exception:
             return str(payload)
+
 
