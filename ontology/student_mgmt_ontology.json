@@ -1,0 +1,916 @@
+{
+  "name": "人口领域本体",
+  "version": "2.0",
+  "description": "Rebuilt from Excel: C:\\Users\\dahe\\Downloads\\人口领域本体 (1).xlsx",
+  "entities": {
+    "自然人": {
+      "label": "自然人",
+      "description": "",
+      "aliases": [
+        "自然人"
+      ],
+      "properties": {
+        "身份证件类型": {
+          "aliases": [
+            "身份证件类型"
+          ],
+          "label": "身份证件类型",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "身份证件号码": {
+          "aliases": [
+            "身份证件号码"
+          ],
+          "label": "身份证件号码",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "姓名": {
+          "aliases": [
+            "姓名"
+          ],
+          "label": "姓名",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "曾用名": {
+          "aliases": [
+            "曾用名"
+          ],
+          "label": "曾用名",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "性别": {
+          "aliases": [
+            "性别"
+          ],
+          "label": "性别",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "民族": {
+          "aliases": [
+            "民族"
+          ],
+          "label": "民族",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "国籍": {
+          "aliases": [
+            "国籍"
+          ],
+          "label": "国籍",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "婚姻状况": {
+          "aliases": [
+            "婚姻状况"
+          ],
+          "label": "婚姻状况",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "政治面貌": {
+          "aliases": [
+            "政治面貌"
+          ],
+          "label": "政治面貌",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "宗教信仰": {
+          "aliases": [
+            "宗教信仰"
+          ],
+          "label": "宗教信仰",
+          "type": "string",
+          "value_aliases": {}
+        }
+      }
+    },
+    "户口簿": {
+      "label": "户口簿",
+      "description": "",
+      "aliases": [
+        "户口簿"
+      ],
+      "properties": {
+        "户籍所在地": {
+          "aliases": [
+            "户籍所在地"
+          ],
+          "label": "户籍所在地",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "户籍性质": {
+          "aliases": [
+            "户籍性质"
+          ],
+          "label": "户籍性质",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "户主姓名": {
+          "aliases": [
+            "户主姓名"
+          ],
+          "label": "户主姓名",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "户主身份号码": {
+          "aliases": [
+            "户主身份号码"
+          ],
+          "label": "户主身份号码",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "户口簿编号": {
+          "aliases": [
+            "户口簿编号"
+          ],
+          "label": "户口簿编号",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "户籍登记机关": {
+          "aliases": [
+            "户籍登记机关"
+          ],
+          "label": "户籍登记机关",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "户籍地址": {
+          "aliases": [
+            "户籍地址"
+          ],
+          "label": "户籍地址",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "户籍地街路巷代码": {
+          "aliases": [
+            "户籍地街路巷代码"
+          ],
+          "label": "户籍地街路巷代码",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "籍贯": {
+          "aliases": [
+            "籍贯"
+          ],
+          "label": "籍贯",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "兵役状况": {
+          "aliases": [
+            "兵役状况"
+          ],
+          "label": "兵役状况",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "实际居住地址": {
+          "aliases": [
+            "实际居住地址"
+          ],
+          "label": "实际居住地址",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "户籍注销标识": {
+          "aliases": [
+            "户籍注销标识"
+          ],
+          "label": "户籍注销标识",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "户籍注销日期": {
+          "aliases": [
+            "户籍注销日期"
+          ],
+          "label": "户籍注销日期",
+          "type": "date",
+          "value_aliases": {}
+        }
+      }
+    },
+    "出生医学证明": {
+      "label": "出生医学证明",
+      "description": "",
+      "aliases": [
+        "出生医学证明"
+      ],
+      "properties": {
+        "出生医学证明编号": {
+          "aliases": [
+            "出生医学证明编号"
+          ],
+          "label": "出生医学证明编号",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "新生儿出生日期": {
+          "aliases": [
+            "新生儿出生日期"
+          ],
+          "label": "新生儿出生日期",
+          "type": "date",
+          "value_aliases": {}
+        },
+        "新生儿出生地": {
+          "aliases": [
+            "新生儿出生地"
+          ],
+          "label": "新生儿出生地",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "新生儿国籍": {
+          "aliases": [
+            "新生儿国籍"
+          ],
+          "label": "新生儿国籍",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "新生儿姓名": {
+          "aliases": [
+            "新生儿姓名"
+          ],
+          "label": "新生儿姓名",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "新生儿性别": {
+          "aliases": [
+            "新生儿性别"
+          ],
+          "label": "新生儿性别",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "新生儿民族": {
+          "aliases": [
+            "新生儿民族"
+          ],
+          "label": "新生儿民族",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "母亲证件号码": {
+          "aliases": [
+            "母亲证件号码"
+          ],
+          "label": "母亲证件号码",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "父亲证件号码": {
+          "aliases": [
+            "父亲证件号码"
+          ],
+          "label": "父亲证件号码",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "母亲证件类型": {
+          "aliases": [
+            "母亲证件类型"
+          ],
+          "label": "母亲证件类型",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "父亲证件类型": {
+          "aliases": [
+            "父亲证件类型"
+          ],
+          "label": "父亲证件类型",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "母亲姓名": {
+          "aliases": [
+            "母亲姓名"
+          ],
+          "label": "母亲姓名",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "父亲姓名": {
+          "aliases": [
+            "父亲姓名"
+          ],
+          "label": "父亲姓名",
+          "type": "string",
+          "value_aliases": {}
+        }
+      }
+    },
+    "殡葬登记表": {
+      "label": "殡葬登记表",
+      "description": "",
+      "aliases": [
+        "殡葬登记表"
+      ],
+      "properties": {
+        "殡葬对象身份证件类型": {
+          "aliases": [
+            "殡葬对象身份证件类型"
+          ],
+          "label": "殡葬对象身份证件类型",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "殡葬对象身份证件号码": {
+          "aliases": [
+            "殡葬对象身份证件号码"
+          ],
+          "label": "殡葬对象身份证件号码",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "殡葬对象姓名": {
+          "aliases": [
+            "殡葬对象姓名"
+          ],
+          "label": "殡葬对象姓名",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "殡葬类型": {
+          "aliases": [
+            "殡葬类型"
+          ],
+          "label": "殡葬类型",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "殡葬日期": {
+          "aliases": [
+            "殡葬日期"
+          ],
+          "label": "殡葬日期",
+          "type": "date",
+          "value_aliases": {}
+        }
+      }
+    },
+    "结婚证": {
+      "label": "结婚证",
+      "description": "",
+      "aliases": [
+        "结婚证"
+      ],
+      "properties": {
+        "配偶姓名": {
+          "aliases": [
+            "配偶姓名"
+          ],
+          "label": "配偶姓名",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "配偶证件类型": {
+          "aliases": [
+            "配偶证件类型"
+          ],
+          "label": "配偶证件类型",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "配偶证件号码": {
+          "aliases": [
+            "配偶证件号码"
+          ],
+          "label": "配偶证件号码",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "配偶国籍": {
+          "aliases": [
+            "配偶国籍"
+          ],
+          "label": "配偶国籍",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "本人姓名": {
+          "aliases": [
+            "本人姓名"
+          ],
+          "label": "本人姓名",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "本人证件类型": {
+          "aliases": [
+            "本人证件类型"
+          ],
+          "label": "本人证件类型",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "本人证件号码": {
+          "aliases": [
+            "本人证件号码"
+          ],
+          "label": "本人证件号码",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "本人国籍": {
+          "aliases": [
+            "本人国籍"
+          ],
+          "label": "本人国籍",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "结婚日期": {
+          "aliases": [
+            "结婚日期"
+          ],
+          "label": "结婚日期",
+          "type": "date",
+          "value_aliases": {}
+        },
+        "婚姻状况": {
+          "aliases": [
+            "婚姻状况"
+          ],
+          "label": "婚姻状况",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "婚姻事项": {
+          "aliases": [
+            "婚姻事项"
+          ],
+          "label": "婚姻事项",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "婚姻状况变更日期": {
+          "aliases": [
+            "婚姻状况变更日期"
+          ],
+          "label": "婚姻状况变更日期",
+          "type": "date",
+          "value_aliases": {}
+        },
+        "登记机关": {
+          "aliases": [
+            "登记机关"
+          ],
+          "label": "登记机关",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "婚姻登记类型": {
+          "aliases": [
+            "婚姻登记类型"
+          ],
+          "label": "婚姻登记类型",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "结婚证字号": {
+          "aliases": [
+            "结婚证字号"
+          ],
+          "label": "结婚证字号",
+          "type": "string",
+          "value_aliases": {}
+        }
+      }
+    },
+    "离婚证": {
+      "label": "离婚证",
+      "description": "",
+      "aliases": [
+        "离婚证"
+      ],
+      "properties": {
+        "配偶姓名": {
+          "aliases": [
+            "配偶姓名"
+          ],
+          "label": "配偶姓名",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "配偶证件类型": {
+          "aliases": [
+            "配偶证件类型"
+          ],
+          "label": "配偶证件类型",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "配偶证件号码": {
+          "aliases": [
+            "配偶证件号码"
+          ],
+          "label": "配偶证件号码",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "配偶国籍": {
+          "aliases": [
+            "配偶国籍"
+          ],
+          "label": "配偶国籍",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "本人姓名": {
+          "aliases": [
+            "本人姓名"
+          ],
+          "label": "本人姓名",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "本人证件类型": {
+          "aliases": [
+            "本人证件类型"
+          ],
+          "label": "本人证件类型",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "本人证件号码": {
+          "aliases": [
+            "本人证件号码"
+          ],
+          "label": "本人证件号码",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "本人国籍": {
+          "aliases": [
+            "本人国籍"
+          ],
+          "label": "本人国籍",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "离婚日期": {
+          "aliases": [
+            "离婚日期"
+          ],
+          "label": "离婚日期",
+          "type": "date",
+          "value_aliases": {}
+        },
+        "婚姻事项": {
+          "aliases": [
+            "婚姻事项"
+          ],
+          "label": "婚姻事项",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "婚姻状况": {
+          "aliases": [
+            "婚姻状况"
+          ],
+          "label": "婚姻状况",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "婚姻登记类型": {
+          "aliases": [
+            "婚姻登记类型"
+          ],
+          "label": "婚姻登记类型",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "婚姻状况变更原因": {
+          "aliases": [
+            "婚姻状况变更原因"
+          ],
+          "label": "婚姻状况变更原因",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "婚姻状况变更日期": {
+          "aliases": [
+            "婚姻状况变更日期"
+          ],
+          "label": "婚姻状况变更日期",
+          "type": "date",
+          "value_aliases": {}
+        },
+        "登记机关": {
+          "aliases": [
+            "登记机关"
+          ],
+          "label": "登记机关",
+          "type": "string",
+          "value_aliases": {}
+        },
+        "离婚证字号": {
+          "aliases": [
+            "离婚证字号"
+          ],
+          "label": "离婚证字号",
+          "type": "string",
+          "value_aliases": {}
+        }
+      }
+    },
+    "离婚判决书": {
+      "label": "离婚判决书",
+      "description": "",
+      "aliases": [
+        "离婚判决书"
+      ],
+      "properties": {
+        "离婚判决时间": {
+          "aliases": [
+            "离婚判决时间"
+          ],
+          "label": "离婚判决时间",
+          "type": "date",
+          "value_aliases": {}
+        },
+        "离婚判决生效日期": {
+          "aliases": [
+            "离婚判决生效日期"
+          ],
+          "label": "离婚判决生效日期",
+          "type": "date",
+          "value_aliases": {}
+        }
+      }
+    },
+    "民政局": {
+      "label": "民政局",
+      "description": "",
+      "aliases": [
+        "民政局"
+      ],
+      "properties": {
+        "单位名称": {
+          "aliases": [
+            "单位名称"
+          ],
+          "label": "单位名称",
+          "type": "string",
+          "value_aliases": {}
+        }
+      }
+    },
+    "卫健委": {
+      "label": "卫健委",
+      "description": "",
+      "aliases": [
+        "卫健委"
+      ],
+      "properties": {
+        "单位名称": {
+          "aliases": [
+            "单位名称"
+          ],
+          "label": "单位名称",
+          "type": "string",
+          "value_aliases": {}
+        }
+      }
+    },
+    "公安局": {
+      "label": "公安局",
+      "description": "",
+      "aliases": [
+        "公安局"
+      ],
+      "properties": {
+        "单位名称": {
+          "aliases": [
+            "单位名称"
+          ],
+          "label": "单位名称",
+          "type": "string",
+          "value_aliases": {}
+        }
+      }
+    },
+    "法院": {
+      "label": "法院",
+      "description": "",
+      "aliases": [
+        "法院"
+      ],
+      "properties": {
+        "单位名称": {
+          "aliases": [
+            "单位名称"
+          ],
+          "label": "单位名称",
+          "type": "string",
+          "value_aliases": {}
+        }
+      }
+    },
+    "政府单位": {
+      "label": "政府单位",
+      "description": "",
+      "aliases": [
+        "政府单位"
+      ],
+      "properties": {}
+    }
+  },
+  "relations": [
+    {
+      "from": "公安局",
+      "to": "户口簿",
+      "type": "related",
+      "label": "签发",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "卫健委",
+      "to": "出生医学证明",
+      "type": "related",
+      "label": "签发",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "民政局",
+      "to": "结婚证",
+      "type": "related",
+      "label": "签发",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "民政局",
+      "to": "离婚证",
+      "type": "related",
+      "label": "签发",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "法院",
+      "to": "离婚判决书",
+      "type": "related",
+      "label": "作出",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "自然人",
+      "to": "户口簿",
+      "type": "related",
+      "label": "持有",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "自然人",
+      "to": "出生医学证明",
+      "type": "related",
+      "label": "持有",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "自然人",
+      "to": "结婚证",
+      "type": "related",
+      "label": "持有",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "自然人",
+      "to": "离婚证",
+      "type": "related",
+      "label": "持有",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "自然人",
+      "to": "离婚判决书",
+      "type": "related",
+      "label": "持有",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "自然人",
+      "to": "民政局",
+      "type": "related",
+      "label": "办理婚姻登记",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "自然人",
+      "to": "卫健委",
+      "type": "related",
+      "label": "办理出生登记",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "自然人",
+      "to": "公安局",
+      "type": "related",
+      "label": "办理户籍登记",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "自然人",
+      "to": "民政局",
+      "type": "related",
+      "label": "办理殡葬登记",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "自然人",
+      "to": "法院",
+      "type": "related",
+      "label": "提起离婚诉讼",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "自然人",
+      "to": "自然人",
+      "type": "related",
+      "label": "婚姻关系",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "自然人",
+      "to": "自然人",
+      "type": "related",
+      "label": "亲子关系",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "自然人",
+      "to": "自然人",
+      "type": "related",
+      "label": "离异关系",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "政府单位",
+      "to": "民政局",
+      "type": "related",
+      "label": "包括",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "政府单位",
+      "to": "卫健委",
+      "type": "related",
+      "label": "包括",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "政府单位",
+      "to": "公安局",
+      "type": "related",
+      "label": "包括",
+      "from_field": "",
+      "to_field": ""
+    },
+    {
+      "from": "政府单位",
+      "to": "法院",
+      "type": "related",
+      "label": "包括",
+      "from_field": "",
+      "to_field": ""
+    }
+  ]
+}

@@ -1,0 +1,224 @@
+{
+  "version": "2026-02-28",
+  "purpose": "问题拆解前的防误拆回归用例",
+  "cases": [
+    {
+      "id": "NS001",
+      "question": "省垂系统中，哪个系统建设费最高",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "single_top1"
+    },
+    {
+      "id": "NS002",
+      "question": "省垂系统建设费最高的是哪个系统",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "single_top1"
+    },
+    {
+      "id": "NS003",
+      "question": "江苏省系统CPU使用量总和是多少",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "single_sum"
+    },
+    {
+      "id": "NS004",
+      "question": "各省级部门的系统建设费用是多少",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "single_group_sum"
+    },
+    {
+      "id": "NS005",
+      "question": "全省事项网办率",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "single_rate"
+    },
+    {
+      "id": "NS006",
+      "question": "江苏省各关联项目对应的系统数量分别是多少",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "single_group_count"
+    },
+    {
+      "id": "NS007",
+      "question": "全省开放目录数量",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "single_count"
+    },
+    {
+      "id": "NS008",
+      "question": "不同承载网络的系统对应的磁盘使用量",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "single_group_sum"
+    },
+    {
+      "id": "NS009",
+      "question": "省垂系统运维费用最高的是哪个系统",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "single_top1"
+    },
+    {
+      "id": "NS010",
+      "question": "江苏省司法厅的系统建设费用",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "single_filter_sum_or_detail"
+    },
+    {
+      "id": "SP001",
+      "question": "省垂系统运维费用是多少，哪个系统费用最高",
+      "expected_split": true,
+      "expected_task_count": 2,
+      "tag": "dual_total_plus_top1",
+      "expected_subtasks": [
+        "省垂系统运维费用是多少",
+        "省垂系统中哪个系统运维费用最高"
+      ]
+    },
+    {
+      "id": "SP002",
+      "question": "全省系统建设费用总额是多少，以及费用最高的系统是哪个",
+      "expected_split": true,
+      "expected_task_count": 2,
+      "tag": "dual_total_plus_top1",
+      "expected_subtasks": [
+        "全省系统建设费用总额是多少",
+        "全省系统中建设费用最高的是哪个系统"
+      ]
+    },
+    {
+      "id": "SP003",
+      "question": "江苏省系统上云率是多少，同时未上云系统有多少个",
+      "expected_split": true,
+      "expected_task_count": 2,
+      "tag": "dual_rate_plus_count"
+    },
+    {
+      "id": "SP004",
+      "question": "全省开放目录数量多少，另外开放目录占比是多少",
+      "expected_split": true,
+      "expected_task_count": 2,
+      "tag": "dual_count_plus_rate"
+    },
+    {
+      "id": "SP005",
+      "question": "江苏省各部门系统数量分别是多少，并且系统建设费用总和是多少",
+      "expected_split": true,
+      "expected_task_count": 2,
+      "tag": "dual_group_count_plus_sum"
+    },
+    {
+      "id": "SP006",
+      "question": "全省系统CPU使用量总和是多少，内存使用量总和又是多少",
+      "expected_split": true,
+      "expected_task_count": 2,
+      "tag": "dual_metric_parallel"
+    },
+    {
+      "id": "SP007",
+      "question": "全省村级事项有多少？全省乡级事项有多少？",
+      "expected_split": true,
+      "expected_task_count": 2,
+      "tag": "dual_parallel_questions"
+    },
+    {
+      "id": "SP008",
+      "question": "江苏省系统数量和系统建设费用总额分别是多少",
+      "expected_split": true,
+      "expected_task_count": 2,
+      "tag": "dual_count_plus_sum"
+    },
+    {
+      "id": "SP009",
+      "question": "先看全省系统总数，再看系统上云率",
+      "expected_split": true,
+      "expected_task_count": 2,
+      "tag": "dual_sequential"
+    },
+    {
+      "id": "SP010",
+      "question": "统计省垂系统运维费用总额，并返回费用最高的前1个系统",
+      "expected_split": true,
+      "expected_task_count": 2,
+      "tag": "dual_total_plus_topn"
+    },
+    {
+      "id": "BD001",
+      "question": "省垂系统运维费用最高的系统及其费用是多少",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "borderline_top1_with_metric"
+    },
+    {
+      "id": "BD002",
+      "question": "江苏省系统建设费用最高的前3个系统及费用",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "borderline_topn"
+    },
+    {
+      "id": "BD003",
+      "question": "各承载网络的系统数量及对应磁盘使用量",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "borderline_multi_measure_single_group"
+    },
+    {
+      "id": "BD004",
+      "question": "各省级部门系统建设费用及系统数量",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "borderline_multi_measure_single_group"
+    },
+    {
+      "id": "BD005",
+      "question": "江苏省系统上云率和未上云率",
+      "expected_split": true,
+      "expected_task_count": 2,
+      "tag": "borderline_dual_rate"
+    },
+    {
+      "id": "BD006",
+      "question": "全省系统运维费用同比和环比",
+      "expected_split": true,
+      "expected_task_count": 2,
+      "tag": "borderline_dual_compare"
+    },
+    {
+      "id": "BD007",
+      "question": "省垂系统里建设费最高的是哪个系统，费用是多少",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "borderline_top1_with_value"
+    },
+    {
+      "id": "BD008",
+      "question": "江苏省系统总数、上云率、未上云数量",
+      "expected_split": true,
+      "expected_task_count": 3,
+      "tag": "borderline_three_targets"
+    },
+    {
+      "id": "BD009",
+      "question": "全省系统数量分布情况",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "borderline_single_distribution"
+    },
+    {
+      "id": "BD010",
+      "question": "江苏省系统建设费用总额（按部门）",
+      "expected_split": false,
+      "expected_task_count": 1,
+      "tag": "borderline_group_sum"
+    }
+  ]
+}

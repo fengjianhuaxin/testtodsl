@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 新点本体问答系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            overflow: hidden;
+        }
+        .bg-particles {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 0;
+        }
+        .bg-particles span {
+            position: absolute;
+            width: 4px; height: 4px;
+            background: rgba(120, 100, 255, 0.4);
+            border-radius: 50%;
+            animation: float 6s infinite ease-in-out;
+        }
+        .bg-particles span:nth-child(1) { left: 10%; top: 20%; animation-delay: 0s; }
+        .bg-particles span:nth-child(2) { left: 30%; top: 60%; animation-delay: 1s; }
+        .bg-particles span:nth-child(3) { left: 60%; top: 30%; animation-delay: 2s; }
+        .bg-particles span:nth-child(4) { left: 80%; top: 70%; animation-delay: 3s; }
+        .bg-particles span:nth-child(5) { left: 50%; top: 90%; animation-delay: 4s; }
+        .bg-particles span:nth-child(6) { left: 20%; top: 80%; animation-delay: 0.5s; }
+        .bg-particles span:nth-child(7) { left: 70%; top: 10%; animation-delay: 1.5s; }
+        .bg-particles span:nth-child(8) { left: 90%; top: 40%; animation-delay: 2.5s; }
+        @keyframes float {
+            0%, 100% { transform: translateY(0) scale(1); opacity: 0.4; }
+            50% { transform: translateY(-30px) scale(1.5); opacity: 0.8; }
+        }
+        .login-card {
+            position: relative; z-index: 1;
+            width: 420px;
+            background: rgba(30, 27, 55, 0.85);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(120, 100, 255, 0.2);
+            border-radius: 24px;
+            padding: 48px 40px;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.5), 0 0 120px rgba(120, 100, 255, 0.1);
+        }
+        .login-logo {
+            text-align: center;
+            margin-bottom: 36px;
+        }
+        .login-logo .icon {
+            width: 72px; height: 72px;
+            background: linear-gradient(135deg, #7c6cff, #a78bfa);
+            border-radius: 18px;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 36px;
+            box-shadow: 0 8px 24px rgba(124, 108, 255, 0.4);
+            margin-bottom: 16px;
+        }
+        .login-logo h1 {
+            color: #e8e6f0;
+            font-size: 22px;
+            font-weight: 600;
+        }
+        .login-logo p {
+            color: rgba(200, 195, 220, 0.6);
+            font-size: 13px;
+            margin-top: 6px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            color: rgba(200, 195, 220, 0.7);
+            font-size: 13px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(120, 100, 255, 0.2);
+            border-radius: 12px;
+            color: #e8e6f0;
+            font-size: 15px;
+            outline: none;
+            transition: all 0.3s;
+        }
+        .form-group input:focus {
+            border-color: rgba(120, 100, 255, 0.6);
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 20px rgba(120, 100, 255, 0.15);
+        }
+        .form-group input::placeholder { color: rgba(200, 195, 220, 0.3); }
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #7c6cff, #a78bfa);
+            border: none;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 8px;
+        }
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(124, 108, 255, 0.5);
+        }
+        .login-btn:active { transform: translateY(0); }
+        .login-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .error-msg {
+            color: #ff6b8a; font-size: 13px; text-align: center;
+            margin-top: 16px; min-height: 20px;
+        }
+        .test-accounts {
+            margin-top: 28px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(120, 100, 255, 0.1);
+        }
+        .test-accounts h3 {
+            color: rgba(200, 195, 220, 0.5);
+            font-size: 12px;
+            font-weight: 500;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .test-account {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+            margin-bottom: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .test-account:hover { background: rgba(120, 100, 255, 0.1); }
+        .test-account .name { color: #c8c3dc; font-size: 13px; }
+        .test-account .role { color: rgba(200,195,220,0.4); font-size: 11px; }
+    </style>
+</head>
+<body>
+    <div class="bg-particles">
+        <span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span>
+    </div>
+    <div class="login-card">
+        <div class="login-logo">
+            <div class="icon">🎓</div>
+            <h1>新点本体问答系统</h1>
+            <p>基于本体论的多智能体数据协作平台</p>
+        </div>
+        <form id="loginForm">
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" id="username" placeholder="请输入用户名" required autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input type="password" id="password" placeholder="请输入密码" required>
+            </div>
+            <button type="submit" class="login-btn" id="loginBtn">登 录</button>
+        </form>
+        <div class="error-msg" id="errorMsg"></div>
+        <div class="test-accounts">
+            <h3>测试账号</h3>
+            <div class="test-account" onclick="fillAccount('admin','admin123')">
+                <span class="name">管理员 (admin)</span>
+                <span class="role">全部权限</span>
+            </div>
+            <div class="test-account" onclick="fillAccount('teacher1','123456')">
+                <span class="name">张老师 (teacher1)</span>
+                <span class="role">查询权限</span>
+            </div>
+            <div class="test-account" onclick="fillAccount('viewer','123456')">
+                <span class="name">访客 (viewer)</span>
+                <span class="role">仅登录 / 无查询</span>
+            </div>
+        </div>
+    </div>
+    <script>
+        function fillAccount(u, p) {
+            document.getElementById('username').value = u;
+            document.getElementById('password').value = p;
+        }
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('loginBtn');
+            const errEl = document.getElementById('errorMsg');
+            btn.disabled = true;
+            btn.textContent = '登录中...';
+            errEl.textContent = '';
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: document.getElementById('password').value
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    window.location.href = '/';
+                } else {
+                    errEl.textContent = data.error || '登录失败';
+                }
+            } catch (err) {
+                errEl.textContent = '网络错误';
+            }
+            btn.disabled = false;
+            btn.textContent = '登 录';
+        });
+        // 如已登录，跳转首页
+        (async () => {
+            try {
+                const res = await fetch('/api/me');
+                const data = await res.json();
+                if (data.logged_in) window.location.href = '/';
+            } catch(e) {}
+        })();
+    </script>
+</body>
+</html>

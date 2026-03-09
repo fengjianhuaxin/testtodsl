@@ -1,0 +1,209 @@
+{
+    "source_name": "xksx",
+    "source_id": "xksx",
+    "description": "Imported from 人口领域表结构说明_户籍、出生、殡葬、婚姻.xlsx (sheet=人口库表结构)",
+    "table_mappings": {
+        "HUKOU_REG": {
+            "table_name": "b_share_ppl_bas_hukou_reg",
+            "file_name": "b_share_ppl_bas_hukou_reg.xlsx",
+            "field_mappings": {
+                "ACTUAL_ADDR_PROV_CITY_DIST": "actual_addr_prov_city_dist",
+                "ACTUAL_DETAIL_ADDR": "actual_detail_addr",
+                "BIRTH_DATE": "birth_date",
+                "BIRTH_PLACE_COUNTRY_REGION": "birth_place_country_region",
+                "BIRTH_PLACE_PROV_CITY_COUNTY": "birth_place_prov_city_county",
+                "CANCEL_DATE": "cancel_date",
+                "CANCEL_FLAG": "cancel_flag",
+                "CERT_NO": "cert_no",
+                "CERT_TYPE": "cert_type",
+                "EP_DATA_SYNC_TIME": "ep_data_sync_time",
+                "EP_DEFAULT_DATA_DIGEST": "ep_default_data_digest",
+                "EP_MODEL_PROCESS_TIME": "ep_model_process_time",
+                "EP_SRC_DEPT": "ep_src_dept",
+                "EP_SRC_TABLE": "ep_src_table",
+                "GENDER": "gender",
+                "HUKOU_BOOK_NO": "hukou_book_no",
+                "HUKOU_DET_ADDR": "hukou_det_addr",
+                "HUKOU_HEAD_ID_NO": "hukou_head_id_no",
+                "HUKOU_HEAD_NAME": "hukou_head_name",
+                "HUKOU_LOC": "hukou_loc",
+                "HUKOU_PROV_CITY_DIST": "hukou_prov_city_dist",
+                "HUKOU_REG_ORG": "hukou_reg_org",
+                "HUKOU_STREET_CODE": "hukou_street_code",
+                "HUKOU_TYPE": "hukou_type",
+                "MILITARY_SERVICE_STATUS": "military_service_status",
+                "NAME": "name",
+                "NATION": "nation",
+                "NATIONALITY": "nationality",
+                "NATIVE_PLACE": "native_place",
+                "NATIVE_PLACE_DETAIL_ADDR": "native_place_detail_addr",
+                "NATIVE_PLACE_PROV_CITY_DIST": "native_place_prov_city_dist",
+                "POLITICAL_STATUS": "political_status",
+                "PREV_NAME": "prev_name",
+                "RELIGION": "religion"
+            },
+            "field_value_semantics": {
+                "hukou_prov_city_dist": {
+                    "aliases": {
+                        "江苏": "320000",
+                        "江苏省": "320000"
+                    },
+                    "confidence_threshold": 0.75,
+                    "unknown_policy": "ask"
+                }
+            },
+            "self_join_policy": {
+                "enabled": false,
+                "mode": "disabled",
+                "candidate_pairs": []
+            }
+        },
+        "BIRTH_INFO": {
+            "table_name": "b_share_ppl_bas_birth_info",
+            "file_name": "b_share_ppl_bas_birth_info.xlsx",
+            "field_mappings": {
+                "CERT_NO": "cert_no",
+                "NAME": "name",
+                "BIRTH_CERT_NO": "birth_cert_no",
+                "BIRTH_DATE": "birth_date",
+                "GENDER": "gender",
+                "MOTHER_NAME": "mother_name",
+                "MOTHER_CERT_TYPE": "mother_cert_type",
+                "MOTHER_CERT_NO": "mother_cert_no",
+                "NATIONALITY": "nationality",
+                "BIRTH_PLACE_COUNTRY_REGION": "birth_place_country_region",
+                "BIRTH_PLACE_PROV_CITY_COUNTY": "birth_place_prov_city_county",
+                "ETHNIC_GROUP": "ethnic_group",
+                "FATHER_NAME": "father_name",
+                "FATHER_CERT_TYPE": "father_cert_type",
+                "FATHER_CERT_NO": "father_cert_no",
+                "EP_DEFAULT_DATA_DIGEST": "ep_default_data_digest",
+                "EP_MODEL_PROCESS_TIME": "ep_model_process_time",
+                "EP_DATA_SYNC_TIME": "ep_data_sync_time",
+                "EP_SRC_TABLE": "ep_src_table",
+                "EP_SRC_DEPT": "ep_src_dept"
+            },
+            "field_value_semantics": {},
+            "self_join_policy": {
+                "enabled": true,
+                "mode": "explicit_only",
+                "candidate_pairs": [
+                    {
+                        "left_field": "MOTHER_CERT_NO",
+                        "right_field": "CERT_NO",
+                        "reason": "mother_lookup"
+                    },
+                    {
+                        "left_field": "FATHER_CERT_NO",
+                        "right_field": "CERT_NO",
+                        "reason": "father_lookup"
+                    }
+                ]
+            }
+        },
+        "FUNERAL_INFO": {
+            "table_name": "b_share_ppl_bas_funeral_info",
+            "file_name": "b_share_ppl_bas_funeral_info.xlsx",
+            "field_mappings": {
+                "CERT_NO": "cert_no",
+                "CERT_TYPE": "cert_type",
+                "EP_DATA_SYNC_TIME": "ep_data_sync_time",
+                "EP_DEFAULT_DATA_DIGEST": "ep_default_data_digest",
+                "EP_MODEL_PROCESS_TIME": "ep_model_process_time",
+                "EP_SRC_DEPT": "ep_src_dept",
+                "EP_SRC_TABLE": "ep_src_table",
+                "FUNERAL_DATE": "funeral_date",
+                "FUNERAL_TYPE": "funeral_type",
+                "NAME": "name"
+            },
+            "field_value_semantics": {
+                "funeral_type": {
+                    "aliases": {},
+                    "closed_set": [
+                        "土葬",
+                        "火化"
+                    ],
+                    "confidence_threshold": 0.75,
+                    "labels": {
+                        "土葬": "土葬",
+                        "火化": "火化"
+                    },
+                    "unknown_policy": "ask"
+                }
+            },
+            "self_join_policy": {
+                "enabled": false,
+                "mode": "disabled",
+                "candidate_pairs": []
+            }
+        },
+        "MARRIAGE_REL": {
+            "table_name": "b_share_ppl_rel_marriage_rel",
+            "file_name": "b_share_ppl_rel_marriage_rel.xlsx",
+            "field_mappings": {
+                "CERT_TYPE": "cert_type",
+                "CERT_NO": "cert_no",
+                "NAME": "name",
+                "SPOUSE_CERT_TYPE": "spouse_cert_type",
+                "SPOUSE_CERT_NO": "spouse_cert_no",
+                "SPOUSE_NAME": "spouse_name",
+                "MARITAL_STATUS": "marital_status",
+                "DIVORCE_MARRIAGE_DATE": "divorce_marriage_date",
+                "PERSONAL_NATIONALITY": "personal_nationality",
+                "SPOUSE_NATIONALITY": "spouse_nationality",
+                "EP_DEFAULT_DATA_DIGEST": "ep_default_data_digest",
+                "EP_MODEL_PROCESS_TIME": "ep_model_process_time",
+                "EP_DATA_SYNC_TIME": "ep_data_sync_time",
+                "EP_SRC_TABLE": "ep_src_table",
+                "EP_SRC_DEPT": "ep_src_dept"
+            },
+            "field_value_semantics": {}
+        },
+        "MARRIAGE_REL_HIS": {
+            "table_name": "b_share_ppl_rel_marriage_rel_his",
+            "file_name": "b_share_ppl_rel_marriage_rel_his.xlsx",
+            "field_mappings": {
+                "CERT_NO": "cert_no",
+                "CERT_NUM": "cert_num",
+                "CERT_TYPE": "cert_type",
+                "DIV_EFF_DATE": "div_eff_date",
+                "DIV_JUD_DATE": "div_jud_date",
+                "EP_DATA_SYNC_TIME": "ep_data_sync_time",
+                "EP_DEFAULT_DATA_DIGEST": "ep_default_data_digest",
+                "EP_MODEL_PROCESS_TIME": "ep_model_process_time",
+                "EP_SRC_DEPT": "ep_src_dept",
+                "EP_SRC_TABLE": "ep_src_table",
+                "GENDER": "gender",
+                "MARITAL_STATUS": "marital_status",
+                "MARITAL_STATUS_CHANGE_CAUSE": "marital_status_change_cause",
+                "MARITAL_STATUS_CHANGE_DATE": "marital_status_change_date",
+                "MAR_TYPE": "mar_type",
+                "NAME": "name",
+                "PERSONAL_NATIONALITY": "personal_nationality",
+                "REG_AUTH": "reg_auth",
+                "SPOUSE_CERT_NO": "spouse_cert_no",
+                "SPOUSE_CERT_TYPE": "spouse_cert_type",
+                "SPOUSE_NAME": "spouse_name",
+                "SPOUSE_NATIONALITY": "spouse_nationality",
+                "UUID": "uuid"
+            },
+            "field_value_semantics": {
+                "marital_status": {
+                    "aliases": {
+                        "已婚": "已婚"
+                    },
+                    "closed_set": [
+                        "已婚",
+                        "离婚"
+                    ],
+                    "confidence_threshold": 0.75,
+                    "labels": {
+                        "已婚": "结婚了",
+                        "离婚": "离婚"
+                    },
+                    "unknown_policy": "ask"
+                }
+            }
+        }
+    }
+}
