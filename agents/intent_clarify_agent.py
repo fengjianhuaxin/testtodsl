@@ -9,7 +9,7 @@ from agents.base_agent import BaseAgent
 class IntentClarifyAgent(BaseAgent):
     FROM_PATTERN = re.compile(r"\bfrom\s+`?([a-zA-Z0-9_]+)`?", flags=re.IGNORECASE)
     ORDER_BY_PATTERN = re.compile(r"^(?P<field>.+?)\s+(?P<direction>asc|desc)$", flags=re.IGNORECASE)
-    ENTITY_SELECTION_MIN_CONFIDENCE = 0.55
+
     ALLOWED_CALC_TYPES = {
         "detail", "count", "sum", "avg", "rate", "max", "min", "group_count", "topn", "custom_sql",
     }
@@ -282,8 +282,7 @@ $relation_catalog
             return fallback
 
         normalized = self._normalize_entity_selection_result(parsed, all_entities, fallback)
-        confidence = float(normalized.get("confidence", 0.0))
-        normalized["use_scoped"] = bool(normalized.get("target_entity_keys")) and confidence >= self.ENTITY_SELECTION_MIN_CONFIDENCE
+        normalized["use_scoped"] = bool(normalized.get("target_entity_keys"))
         return normalized
 
     def _heuristic_entity_candidates(self, question: str, all_entities: list[str]) -> dict:
