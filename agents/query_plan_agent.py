@@ -31,10 +31,10 @@ class QueryPlanAgent(BaseAgent):
 
     def run(self, input_data: dict) -> dict:
         intent = input_data["clarified_intent"]
-        target_entities = intent.get("target_entities", [])
+        target_entities = self._collect_target_entities(intent)
         raw_instances = intent.get("entity_instances", [])
         raw_relations = intent.get("relations", [])
-        primary_entity = str(intent.get("primary_entity", "")).strip().upper()
+        primary_entity = ""
         target_entities = self._reorder_by_primary_entity(target_entities, primary_entity)
         question_text = str(input_data.get("raw_question") or input_data.get("question") or "").strip()
         self.log(f"构建对象子图，涉及实体: {target_entities}")
@@ -55,7 +55,7 @@ class QueryPlanAgent(BaseAgent):
                 instance_id = str(item.get("id", "") or item.get("instance_id", "")).strip()
                 if not instance_id:
                     instance_id = f"{entity_name.lower()}_{idx}"
-                instance_id = re.sub(r"[^a-zA-Z0-9_]", "_", instance_id)
+                instance_id = re.sub(r"[^a-zA-Z0-9_\u4e00-\u9fa5]", "_", instance_id)
                 if not instance_id or instance_id in seen_ids:
                     continue
                 seen_ids.add(instance_id)
@@ -108,8 +108,18 @@ class QueryPlanAgent(BaseAgent):
                             }
                         )
 
-        if isinstance(raw_relations, list) and raw_relations:
-            for item in raw_relations:
+        intent_join_relations = []
+        if isinstance(raw_relations, list):
+            for rel_item in raw_relations:
+                if not isinstance(rel_item, dict):
+                    continue
+                left_field_raw = str(rel_item.get("left_field", "") or rel_item.get("from_field", "")).strip()
+                right_field_raw = str(rel_item.get("right_field", "") or rel_item.get("to_field", "")).strip()
+                if left_field_raw and right_field_raw:
+                    intent_join_relations.append(rel_item)
+
+        if intent_join_relations:
+            for item in intent_join_relations:
                 if not isinstance(item, dict):
                     continue
                 left_instance = str(item.get("left_instance", "")).strip()
@@ -181,6 +191,36 @@ class QueryPlanAgent(BaseAgent):
         self.log(f"子图构建完成: {len(subgraph['entities'])}个实体, {len(subgraph['relations'])}个关系")
         return {**input_data, "query_plan": subgraph}
 
+    @staticmethod
+    def _collect_target_entities(intent: dict) -> list:
+        entities = []
+
+        for item in intent.get("target_entities", []) if isinstance(intent.get("target_entities", []), list) else []:
+            name = str(item).strip().upper()
+            if name and name not in entities:
+                entities.append(name)
+
+        raw_instances = intent.get("entity_instances", [])
+        if isinstance(raw_instances, list):
+            for item in raw_instances:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("entity", "")).strip().upper()
+                if name and name not in entities:
+                    entities.append(name)
+
+        for section in ("conditions", "output_fields"):
+            rows = intent.get(section, [])
+            if not isinstance(rows, list):
+                continue
+            for item in rows:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("entity", "")).strip().upper()
+                if name and name not in entities:
+                    entities.append(name)
+
+        return entities
     @staticmethod
     def _reorder_by_primary_entity(target_entities: list, primary_entity: str) -> list:
         entities = []

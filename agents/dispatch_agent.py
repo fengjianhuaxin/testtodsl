@@ -17,7 +17,7 @@ class DispatchAgent(BaseAgent):
             self.log(f"知识验证存在问题: {verify.get('issues', [])}，继续执行（告警）")
 
         calc_type = intent.get("calc_type", "detail")
-        target_entities = intent.get("target_entities", [])
+        target_entities = self._collect_target_entities(intent)
         entity_instances = intent.get("entity_instances", [])
         relations = intent.get("relations", [])
         needs_join = (
@@ -51,3 +51,34 @@ class DispatchAgent(BaseAgent):
             f"任务分配完成: 需要关联={needs_join}, 需要计算={needs_calc}"
         )
         return {**input_data, "dispatch": task_plan}
+
+    @staticmethod
+    def _collect_target_entities(intent: dict) -> list:
+        entities = []
+
+        for item in intent.get("target_entities", []) if isinstance(intent.get("target_entities", []), list) else []:
+            name = str(item).strip().upper()
+            if name and name not in entities:
+                entities.append(name)
+
+        raw_instances = intent.get("entity_instances", [])
+        if isinstance(raw_instances, list):
+            for item in raw_instances:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("entity", "")).strip().upper()
+                if name and name not in entities:
+                    entities.append(name)
+
+        for section in ("conditions", "output_fields"):
+            rows = intent.get(section, [])
+            if not isinstance(rows, list):
+                continue
+            for item in rows:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("entity", "")).strip().upper()
+                if name and name not in entities:
+                    entities.append(name)
+
+        return entities

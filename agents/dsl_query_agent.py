@@ -1321,12 +1321,44 @@ class DSLQueryAgent(BaseAgent):
     def _resolve_primary_entity(self, intent: dict, query_plan: dict) -> str:
         entities = query_plan.get("entities", [])
         if entities:
-            return entities[0]["name"]
-        target_entities = intent.get("target_entities", [])
-        if isinstance(target_entities, list) and target_entities:
+            return str(entities[0].get("name", "") or "")
+
+        target_entities = self._collect_target_entities(intent)
+        if target_entities:
             return str(target_entities[0])
+
         return "INFORMATION_SYSTEM"
 
+    @staticmethod
+    def _collect_target_entities(intent: dict) -> list:
+        entities = []
+
+        for item in intent.get("target_entities", []) if isinstance(intent.get("target_entities", []), list) else []:
+            name = str(item).strip().upper()
+            if name and name not in entities:
+                entities.append(name)
+
+        raw_instances = intent.get("entity_instances", [])
+        if isinstance(raw_instances, list):
+            for item in raw_instances:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("entity", "")).strip().upper()
+                if name and name not in entities:
+                    entities.append(name)
+
+        for section in ("conditions", "output_fields"):
+            rows = intent.get(section, [])
+            if not isinstance(rows, list):
+                continue
+            for item in rows:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("entity", "")).strip().upper()
+                if name and name not in entities:
+                    entities.append(name)
+
+        return entities
     @staticmethod
     def _is_plain_table_name(from_clause: str) -> bool:
         text = str(from_clause or "").strip()

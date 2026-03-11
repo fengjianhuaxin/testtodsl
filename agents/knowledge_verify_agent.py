@@ -1,4 +1,4 @@
-"""知识验证智能体 - 验证意图中的概念是否存在于本体中"""
+﻿"""知识验证智能体 - 验证意图中的概念是否存在于本体中"""
 
 from agents.base_agent import BaseAgent
 
@@ -16,7 +16,7 @@ class KnowledgeVerifyAgent(BaseAgent):
         verified_entities = []
 
         # 验证目标实体
-        for entity_name in intent.get("target_entities", []):
+        for entity_name in self._collect_target_entities(intent):
             entity = self.ontology.get_entity(entity_name)
             if entity:
                 verified_entities.append(
@@ -76,3 +76,34 @@ class KnowledgeVerifyAgent(BaseAgent):
                 "issues": issues,
             },
         }
+
+    @staticmethod
+    def _collect_target_entities(intent: dict) -> list:
+        entities = []
+
+        for item in intent.get("target_entities", []) if isinstance(intent.get("target_entities", []), list) else []:
+            name = str(item).strip().upper()
+            if name and name not in entities:
+                entities.append(name)
+
+        raw_instances = intent.get("entity_instances", [])
+        if isinstance(raw_instances, list):
+            for item in raw_instances:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("entity", "")).strip().upper()
+                if name and name not in entities:
+                    entities.append(name)
+
+        for section in ("conditions", "output_fields"):
+            rows = intent.get(section, [])
+            if not isinstance(rows, list):
+                continue
+            for item in rows:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("entity", "")).strip().upper()
+                if name and name not in entities:
+                    entities.append(name)
+
+        return entities

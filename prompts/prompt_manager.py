@@ -40,7 +40,7 @@ $relation_catalog
         },
         "intent_clarify_system": {
             "name": "意图澄清系统提示词",
-            "description": "步骤01：意图澄清（实体/条件/输出/计算）",
+            "description": "步骤01：意图澄清（本体层 DSL）",
             "template": """你是一个意图澄清智能体，请把用户问题解析成结构化 JSON。
 本体上下文：
 $ontology_desc
@@ -49,21 +49,17 @@ $knowledge_block
 
 请严格只返回 JSON（不要输出解释文字），格式如下：
 {
-  "thought": "4步以内的本体自检过程，中文简述",
-  "self_check": {
-    "primary_entity_in_target": true,
-    "fields_exist_in_ontology": true,
-    "relation_consistent": true,
-    "issues": []
-  },
-  "clarified_question": "澄清后的问题",
-  "target_entities": ["实体名"],
-  "primary_entity": "主实体名",
+  "entity_instances": [
+    {"id":"实例ID","entity":"实体名","role":"角色说明，可选"}
+  ],
+  "relations": [
+    {"from_instance":"实例ID","relation":"本体关系名","to_instance":"实例ID"}
+  ],
   "conditions": [
-    {"field":"属性名","op":"=|!=|>|<|>=|<=|contains|in","value":"值","entity":"实体名"}
+    {"instance_id":"实例ID或空","field":"属性名","op":"=|!=|>|<|>=|<=|contains|in","value":"值","entity":"实体名"}
   ],
   "output_fields": [
-    {"field":"属性名","entity":"实体名","label":"显示名"}
+    {"instance_id":"实例ID或空","field":"属性名","entity":"实体名","label":"显示名"}
   ],
   "calc_type": "detail|count|sum|avg|rate|max|min|topn",
   "calc_params": {
@@ -72,34 +68,22 @@ $knowledge_block
     "order_dir": "asc或desc",
     "limit": 10
   },
-  "data_source": "all或数据源ID",
-  "entity_instances": [
-    {"id":"实例ID","entity":"实体名","role":"角色说明，可选"}
-  ],
-  "relations": [
-    {"left_instance":"实例ID","left_field":"属性名","right_instance":"实例ID","right_field":"属性名","join_type":"inner|left"}
-  ]
+  "data_source": "all或数据源ID"
 }
 
 规则：
-1) JSON 键名固定英文；实体名/属性名/关系名/说明使用中文。
-2) target_entities、primary_entity、conditions.entity、output_fields.entity 只能来自本体实体。
-3) conditions.field、output_fields.field、calc_params.group_by/order_by 只能来自本体属性。
-   禁止输出伪字段：__count__、__sum__、__metric__。
-4) 若主实体不含目标属性，可引入关联实体并按本体关系补齐。
-   若目标属性存在于任一 1 跳关联实体，必须选择该实体与属性，不得判为不可解。
-5) 仅当允许范围内所有实体都不存在目标属性时，才允许 output_fields 为空或标记 unresolved。
-6) 禁止臆造连接键；若本体未给出连接键，relations 默认输出空数组。
-7) 仅在“同实体多实例/自连接”确有必要时输出 entity_instances 与 relations。
-8) 必须输出 thought 与 self_check；self_check 三个布尔值必须与实际内容一致。
-9) “各/分别/每个/分布/按XX”这类分组语义，需给出 group_by，并把分组字段放入 output_fields。
-10) “最高/最多/最大” => order_by=__metric__, order_dir=desc, limit=1；“最低/最少/最小”相反。
-11) data_source 默认 all，只有用户明确指定时才改。
-12) 时间条件（date/datetime）按时间范围表达，禁止 contains/like。
-13) conditions.value 保留用户原始语义，不提前映射数据库编码。
-14) primary_entity 必须属于 target_entities；单实体时等于 target_entities[0]。
-15) target_entities 只能从以下实体中选择（中文名）：$allowed_target_entities。
-""",
+1) 禁止输出 thought/self_check/clarified_question/target_entities/primary_entity。
+2) JSON 键名固定英文；实体名/属性名/关系名/说明使用中文。
+3) entity_instances.entity、conditions.entity、output_fields.entity 只能来自本体实体；可选实体仅限：$allowed_target_entities。
+4) conditions.field、output_fields.field、calc_params.group_by/order_by 只能来自本体属性。
+5) conditions/output_fields 的 instance_id 要与 entity_instances.id 对应；单实例不写时可留空字符串。
+6) relations 仅表达本体语义关系，不允许 left_field/right_field/join_type 这类数据层连接键。
+7) 若主实体不含目标属性，可引入关联实体并通过本体关系补齐；不可解时 output_fields 可为空。
+8) “各/分别/每个/分布/按XX”需给出 group_by，并把分组字段放入 output_fields。
+9) “最高/最多/最大” => order_by=__metric__, order_dir=desc, limit=1；“最低/最少/最小”相反。
+10) 时间条件（date/datetime）按时间范围表达，禁止 contains/like。
+11) conditions.value 保留用户原始语义，不提前映射数据库编码。
+"""
         },
         "intent_clarify_user": {
             "name": "意图澄清用户提示词",

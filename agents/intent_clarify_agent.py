@@ -1,4 +1,4 @@
-﻿"""Intent clarify agent - parse natural language into structured intent."""
+"""Intent clarify agent - parse natural language into structured intent."""
 import json
 import re
 from string import Template
@@ -54,7 +54,6 @@ class IntentClarifyAgent(BaseAgent):
             metric_hints = self._extract_metric_hints(raw_question, target_entities)
 
             result = {
-                "clarified_question": raw_question,
                 "target_entities": target_entities,
                 "primary_entity": primary_entity,
                 "primary_entity_source": "metric_rule_default_first_entity",
@@ -66,7 +65,9 @@ class IntentClarifyAgent(BaseAgent):
                 "custom_sql_rule_id": metric_rule_hit.get("id", ""),
                 "custom_sql_rule_name": metric_rule_hit.get("name", ""),
                 "custom_sql_matched_keywords": metric_rule_hit.get("matched_keywords", []),
+                "data_source": "all",
             }
+            result = self._finalize_ontology_intent(result, question=raw_question)
             self._log_substep(
                 "01_02",
                 f"命中指标SQL规则: {metric_rule_hit.get('name', '')} "
@@ -74,7 +75,7 @@ class IntentClarifyAgent(BaseAgent):
             )
             self._log_substep(
                 "01_08",
-                f"意图澄清完成(custom_sql): 目标实体={result.get('target_entities')}, primary={result.get('primary_entity')}"
+                f"意图澄清完成(custom_sql): 实例数={len(result.get('entity_instances', []) or [])}, calc={result.get('calc_type')}"
             )
             return {
                 **input_data,
@@ -123,21 +124,17 @@ $knowledge_block
 
 请严格只返回 JSON（不要输出解释文字），格式如下：
 {
-  "thought": "4步以内的本体自检过程，中文简述",
-  "self_check": {
-    "primary_entity_in_target": true,
-    "fields_exist_in_ontology": true,
-    "relation_consistent": true,
-    "issues": []
-  },
-  "clarified_question": "澄清后的问题",
-  "target_entities": ["实体名"],
-  "primary_entity": "主实体名",
+  "entity_instances": [
+    {"id":"实例ID","entity":"实体名","role":"角色说明，可选"}
+  ],
+  "relations": [
+    {"from_instance":"实例ID","relation":"本体关系名","to_instance":"实例ID"}
+  ],
   "conditions": [
-    {"field":"属性名","op":"=|!=|>|<|>=|<=|contains|in","value":"值","entity":"实体名"}
+    {"instance_id":"实例ID或空","field":"属性名","op":"=|!=|>|<|>=|<=|contains|in","value":"值","entity":"实体名"}
   ],
   "output_fields": [
-    {"field":"属性名","entity":"实体名","label":"显示名"}
+    {"instance_id":"实例ID或空","field":"属性名","entity":"实体名","label":"显示名"}
   ],
   "calc_type": "detail|count|sum|avg|rate|max|min|topn",
   "calc_params": {
@@ -145,26 +142,22 @@ $knowledge_block
     "order_by": "属性名或实体名.属性名或__metric__",
     "order_dir": "asc或desc",
     "limit": 10
-  }
+  },
+  "data_source": "all或数据源ID"
 }
 
 规则：
-1) JSON 键名固定英文；实体名/属性名/关系名/说明使用中文。
-2) target_entities、primary_entity、conditions.entity、output_fields.entity 只能来自本体实体。
-3) conditions.field、output_fields.field、calc_params.group_by/order_by 只能来自本体属性。
-   禁止输出伪字段：__count__、__sum__、__metric__。
-4) 若主实体不含目标属性，可引入关联实体并按本体关系补齐。
-   若目标属性存在于任一 1 跳关联实体，必须选择该实体与属性，不得判为不可解。
-5) 仅当允许范围内所有实体都不存在目标属性时，才允许 output_fields 为空或标记 unresolved。
-6) 禁止臆造连接键；若本体未给出连接键，relations 默认输出空数组。
-7) 仅在“同实体多实例/自连接”确有必要时输出 entity_instances 与 relations。
-8) 必须输出 thought 与 self_check；self_check 三个布尔值必须与实际内容一致。
-9) “各/分别/每个/分布/按XX”这类分组语义，需给出 group_by，并把分组字段放入 output_fields。
-10) “最高/最多/最大” => order_by=__metric__, order_dir=desc, limit=1；“最低/最少/最小”相反。
-11) 时间条件（date/datetime）按时间范围表达，禁止 contains/like。
-12) conditions.value 保留用户原始语义，不提前映射数据库编码。
-13) primary_entity 必须属于 target_entities；单实体时等于 target_entities[0]。
-14) target_entities 只能从以下实体中选择（中文名）：$allowed_target_entities。
+1) 禁止输出 thought/self_check/clarified_question/target_entities/primary_entity。
+2) JSON 键名固定英文；实体名/属性名/关系名/说明使用中文。
+3) entity_instances.entity、conditions.entity、output_fields.entity 只能来自本体实体；可选实体仅限：$allowed_target_entities。
+4) conditions.field、output_fields.field、calc_params.group_by/order_by 只能来自本体属性。
+5) conditions/output_fields 的 instance_id 要与 entity_instances.id 对应；单实例不写时可留空字符串。
+6) relations 仅表达本体语义关系，不允许 left_field/right_field/join_type 这类数据层连接键。
+7) 若主实体不含目标属性，可引入关联实体并通过本体关系补齐；不可解时 output_fields 可为空。
+8) “各/分别/每个/分布/按XX”需给出 group_by，并把分组字段放入 output_fields。
+9) “最高/最多/最大” => order_by=__metric__, order_dir=desc, limit=1；“最低/最少/最小”相反。
+10) 时间条件（date/datetime）按时间范围表达，禁止 contains/like。
+11) conditions.value 保留用户原始语义，不提前映射数据库编码。
 """
 
         system_prompt = self._render_prompt(
@@ -193,7 +186,7 @@ $knowledge_block
                 context={"question": raw_question},
             )
             model_result = self.llm.chat_json(system_prompt, user_prompt)
-            self._log_substep("01_05", f"模型返回JSON: {self._json_for_log(model_result)}")
+            self._log_substep("01_05", f"模型返回JSON:\n{self._json_for_log(model_result, pretty=True)}")
             result = self._normalize_intent_result(
                 question=raw_question,
                 result=model_result,
@@ -204,15 +197,15 @@ $knowledge_block
 
         self._log_substep(
             "01_06",
-            f"意图归一化完成: entities={result.get('target_entities')}, primary={result.get('primary_entity')}, calc={result.get('calc_type')}"
+            f"意图归一化完成: instances={len(result.get('entity_instances', []) or [])}, calc={result.get('calc_type')}"
         )
         self._log_substep("01_07", "尝试关系实例化（自连接判定）")
         result = self._try_expand_relation_instances(raw_question, result, input_data.get("source_id"))
+        result = self._finalize_ontology_intent(result, question=raw_question)
         self._log_substep(
             "01_08",
-            f"意图澄清完成: 目标实体={result.get('target_entities')}, 计算类型={result.get('calc_type')}"
+            f"意图澄清完成: 实例数={len(result.get('entity_instances', []) or [])}, 关系数={len(result.get('relations', []) or [])}, 计算类型={result.get('calc_type')}"
         )
-        self._log_substep("01_08", f"primary_entity_source={result.get('primary_entity_source', '')}")
         return {
             **input_data,
             "clarified_intent": result,
@@ -791,7 +784,7 @@ $relation_catalog
             instance_id = str(item.get("id", "") or item.get("instance_id", "")).strip()
             if not instance_id:
                 instance_id = f"{entity_name.lower()}_{idx}"
-            instance_id = re.sub(r"[^a-zA-Z0-9_]", "_", instance_id)
+            instance_id = re.sub(r"[^a-zA-Z0-9_\u4e00-\u9fa5]", "_", instance_id)
             if not instance_id or instance_id in instance_id_set:
                 continue
             instance_id_set.add(instance_id)
@@ -818,9 +811,25 @@ $relation_catalog
             raw_relations = []
 
         relations = []
+        semantic_relations = []
+        semantic_relation_seen = set()
         for item in raw_relations:
             if not isinstance(item, dict):
                 continue
+
+            from_instance = str(item.get("from_instance", "") or item.get("left_instance", "")).strip()
+            to_instance = str(item.get("to_instance", "") or item.get("right_instance", "")).strip()
+            relation_name = str(item.get("relation", "") or item.get("predicate", "")).strip()
+            if from_instance and to_instance and relation_name and from_instance in instance_id_set and to_instance in instance_id_set:
+                relation_key = (from_instance, relation_name, to_instance)
+                if relation_key not in semantic_relation_seen:
+                    semantic_relation_seen.add(relation_key)
+                    semantic_relations.append({
+                        "from_instance": from_instance,
+                        "relation": relation_name,
+                        "to_instance": to_instance,
+                    })
+
             left_instance = str(item.get("left_instance", "") or item.get("from_instance", "")).strip()
             right_instance = str(item.get("right_instance", "") or item.get("to_instance", "")).strip()
             left_entity = instance_entity_by_id.get(left_instance, "")
@@ -843,14 +852,6 @@ $relation_catalog
                 "right_field": right_field,
                 "join_type": join_type,
             })
-
-        instance_entities = {item["entity"] for item in entity_instances}
-        if entity_instances and not relations and any(entity not in instance_entities for entity in target_entities):
-            # Drop partial instance hints to avoid collapsing multi-entity planning.
-            entity_instances = []
-            instance_id_set = set()
-            instance_entity_by_id = {}
-
         instance_by_id = {item["id"]: item for item in entity_instances}
         default_instance_by_entity = {}
         for item in entity_instances:
@@ -906,7 +907,7 @@ $relation_catalog
                 op = str(item.get("op", "=")).strip().lower() or "="
                 if op not in self.SUPPORTED_OPS:
                     op = "="
-                entity_instance = str(item.get("entity_instance", "") or item.get("instance", "")).strip()
+                entity_instance = str(item.get("instance_id", "") or item.get("entity_instance", "") or item.get("instance", "")).strip()
                 entity = self._resolve_entity_key(item.get("entity", ""), entity_token_lookup, resolve_allowed_set)
                 if entity_instance and entity_instance in instance_by_id:
                     entity = instance_by_id[entity_instance]["entity"]
@@ -939,7 +940,7 @@ $relation_catalog
                 field = str(item.get("field", "")).strip()
                 if not field:
                     continue
-                entity_instance = str(item.get("entity_instance", "") or item.get("instance", "")).strip()
+                entity_instance = str(item.get("instance_id", "") or item.get("entity_instance", "") or item.get("instance", "")).strip()
                 entity = self._resolve_entity_key(item.get("entity", ""), entity_token_lookup, resolve_allowed_set)
                 if entity_instance and entity_instance in instance_by_id:
                     entity = instance_by_id[entity_instance]["entity"]
@@ -996,6 +997,8 @@ $relation_catalog
         ):
             calc_params.pop("limit", None)
 
+        data_source = str(parsed.get("data_source", "all")).strip() or "all"
+
         return {
             "clarified_question": clarified_question,
             "target_entities": target_entities,
@@ -1005,10 +1008,257 @@ $relation_catalog
             "output_fields": output_fields,
             "entity_instances": entity_instances,
             "relations": relations,
+            "semantic_relations": semantic_relations,
             "calc_type": calc_type,
             "calc_params": calc_params,
+            "data_source": data_source,
         }
 
+
+    def _finalize_ontology_intent(self, intent: dict, question: str = "") -> dict:
+        parsed = intent if isinstance(intent, dict) else {}
+        entities = self._collect_entities_from_intent(parsed)
+
+        raw_instances = parsed.get("entity_instances", [])
+        if isinstance(raw_instances, dict):
+            raw_instances = [raw_instances]
+        if not isinstance(raw_instances, list):
+            raw_instances = []
+
+        entity_instances = []
+        seen_instance_ids = set()
+        for idx, item in enumerate(raw_instances, start=1):
+            if not isinstance(item, dict):
+                continue
+            entity_name = str(item.get("entity", "")).strip().upper()
+            if not entity_name:
+                continue
+            instance_id = str(item.get("id", "") or item.get("instance_id", "")).strip()
+            if not instance_id:
+                instance_id = f"{entity_name.lower()}_{idx}"
+            instance_id = re.sub(r"[^a-zA-Z0-9_\u4e00-\u9fa5]", "_", instance_id)
+            if not instance_id or instance_id in seen_instance_ids:
+                continue
+            seen_instance_ids.add(instance_id)
+            entity_instances.append({
+                "id": instance_id,
+                "entity": entity_name,
+                "role": str(item.get("role", "")).strip(),
+            })
+
+        if not entity_instances:
+            for idx, entity_name in enumerate(entities, start=1):
+                instance_id = re.sub(r"[^a-zA-Z0-9_\u4e00-\u9fa5]", "_", f"{entity_name}_{idx}")
+                entity_instances.append({
+                    "id": instance_id,
+                    "entity": entity_name,
+                    "role": "主体" if idx == 1 else "关联对象",
+                })
+
+        instance_by_id = {item["id"]: item for item in entity_instances}
+        default_instance_by_entity = {}
+        for item in entity_instances:
+            default_instance_by_entity.setdefault(item["entity"], item["id"])
+
+        normalized_conditions = []
+        for item in parsed.get("conditions", []) if isinstance(parsed.get("conditions", []), list) else []:
+            if not isinstance(item, dict):
+                continue
+            field = str(item.get("field", "")).strip()
+            if not field:
+                continue
+            op = str(item.get("op", "=")).strip().lower() or "="
+            if op not in self.SUPPORTED_OPS:
+                op = "="
+            entity_name = str(item.get("entity", "")).strip().upper()
+            instance_id = str(item.get("instance_id", "") or item.get("entity_instance", "") or item.get("instance", "")).strip()
+            if instance_id and instance_id in instance_by_id:
+                entity_name = instance_by_id[instance_id].get("entity", entity_name)
+            if not entity_name and len(entity_instances) == 1:
+                entity_name = entity_instances[0]["entity"]
+            if not instance_id and entity_name in default_instance_by_entity and len(entity_instances) > 1:
+                instance_id = default_instance_by_entity[entity_name]
+            normalized_conditions.append({
+                "instance_id": instance_id if instance_id in instance_by_id else "",
+                "field": field,
+                "op": op,
+                "value": item.get("value", ""),
+                "entity": entity_name,
+            })
+
+        normalized_outputs = []
+        for item in parsed.get("output_fields", []) if isinstance(parsed.get("output_fields", []), list) else []:
+            if not isinstance(item, dict):
+                continue
+            field = str(item.get("field", "")).strip()
+            if not field:
+                continue
+            entity_name = str(item.get("entity", "")).strip().upper()
+            instance_id = str(item.get("instance_id", "") or item.get("entity_instance", "") or item.get("instance", "")).strip()
+            if instance_id and instance_id in instance_by_id:
+                entity_name = instance_by_id[instance_id].get("entity", entity_name)
+            if not entity_name and len(entity_instances) == 1:
+                entity_name = entity_instances[0]["entity"]
+            if not instance_id and entity_name in default_instance_by_entity and len(entity_instances) > 1:
+                instance_id = default_instance_by_entity[entity_name]
+            normalized_outputs.append({
+                "instance_id": instance_id if instance_id in instance_by_id else "",
+                "field": field,
+                "entity": entity_name,
+                "label": str(item.get("label", "")).strip() or field,
+            })
+
+        relations = self._build_semantic_relations(parsed, entity_instances)
+
+        calc_type = str(parsed.get("calc_type", "detail")).strip().lower() or "detail"
+        if calc_type == "group_count":
+            calc_type = "count"
+        if calc_type not in self.ALLOWED_CALC_TYPES:
+            calc_type = "detail"
+
+        finalized = {
+            "entity_instances": entity_instances,
+            "relations": relations,
+            "conditions": normalized_conditions,
+            "output_fields": normalized_outputs,
+            "calc_type": calc_type,
+            "calc_params": self._normalize_calc_params(parsed.get("calc_params", {})),
+            "data_source": str(parsed.get("data_source", "all")).strip() or "all",
+        }
+
+        for key in ("custom_sql", "custom_sql_rule_id", "custom_sql_rule_name", "custom_sql_matched_keywords"):
+            if key in parsed:
+                finalized[key] = parsed.get(key)
+
+        return finalized
+
+    def _build_semantic_relations(self, intent: dict, entity_instances: list) -> list:
+        instance_entity = {
+            str(item.get("id", "")).strip(): str(item.get("entity", "")).strip().upper()
+            for item in entity_instances if isinstance(item, dict)
+        }
+        relations = []
+        seen = set()
+
+        raw_semantic = intent.get("semantic_relations", [])
+        if isinstance(raw_semantic, dict):
+            raw_semantic = [raw_semantic]
+        if not isinstance(raw_semantic, list):
+            raw_semantic = []
+        for item in raw_semantic:
+            if not isinstance(item, dict):
+                continue
+            from_instance = str(item.get("from_instance", "")).strip()
+            to_instance = str(item.get("to_instance", "")).strip()
+            relation_name = str(item.get("relation", "")).strip()
+            if not from_instance or not to_instance or not relation_name:
+                continue
+            if from_instance not in instance_entity or to_instance not in instance_entity:
+                continue
+            key = (from_instance, relation_name, to_instance)
+            if key in seen:
+                continue
+            seen.add(key)
+            relations.append({
+                "from_instance": from_instance,
+                "relation": relation_name,
+                "to_instance": to_instance,
+            })
+
+        if not relations:
+            raw_relations = intent.get("relations", [])
+            if isinstance(raw_relations, dict):
+                raw_relations = [raw_relations]
+            if isinstance(raw_relations, list):
+                for item in raw_relations:
+                    if not isinstance(item, dict):
+                        continue
+                    left_instance = str(item.get("left_instance", "") or item.get("from_instance", "")).strip()
+                    right_instance = str(item.get("right_instance", "") or item.get("to_instance", "")).strip()
+                    if left_instance not in instance_entity or right_instance not in instance_entity:
+                        continue
+                    relation_name = self._infer_ontology_relation_name(instance_entity[left_instance], instance_entity[right_instance])
+                    key = (left_instance, relation_name, right_instance)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    relations.append({
+                        "from_instance": left_instance,
+                        "relation": relation_name,
+                        "to_instance": right_instance,
+                    })
+
+        if not relations and len(entity_instances) > 1:
+            anchor = str(entity_instances[0].get("id", "")).strip()
+            anchor_entity = str(entity_instances[0].get("entity", "")).strip().upper()
+            for item in entity_instances[1:]:
+                to_instance = str(item.get("id", "")).strip()
+                to_entity = str(item.get("entity", "")).strip().upper()
+                if not anchor or not to_instance:
+                    continue
+                relation_name = self._infer_ontology_relation_name(anchor_entity, to_entity)
+                key = (anchor, relation_name, to_instance)
+                if key in seen:
+                    continue
+                seen.add(key)
+                relations.append({
+                    "from_instance": anchor,
+                    "relation": relation_name,
+                    "to_instance": to_instance,
+                })
+
+        return relations
+
+    def _collect_entities_from_intent(self, intent: dict) -> list[str]:
+        entities = []
+        rows = intent.get("target_entities", [])
+        if isinstance(rows, list):
+            for item in rows:
+                name = str(item).strip().upper()
+                if name and name not in entities:
+                    entities.append(name)
+
+        raw_instances = intent.get("entity_instances", [])
+        if isinstance(raw_instances, list):
+            for item in raw_instances:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("entity", "")).strip().upper()
+                if name and name not in entities:
+                    entities.append(name)
+
+        for section in ("conditions", "output_fields"):
+            rows = intent.get(section, [])
+            if not isinstance(rows, list):
+                continue
+            for item in rows:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("entity", "")).strip().upper()
+                if name and name not in entities:
+                    entities.append(name)
+
+        return entities
+
+    def _infer_ontology_relation_name(self, from_entity: str, to_entity: str) -> str:
+        from_name = str(from_entity or "").strip().upper()
+        to_name = str(to_entity or "").strip().upper()
+        if not from_name or not to_name:
+            return "关联"
+
+        relations = self.ontology.get_relations_for(from_name)
+        for item in relations if isinstance(relations, list) else []:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("to", "")).strip().upper() != to_name:
+                continue
+            label = str(item.get("label", "")).strip()
+            if label:
+                return label
+            relation_name = str(item.get("relation", "")).strip()
+            if relation_name:
+                return relation_name
+        return "关联"
     def _try_expand_relation_instances(self, question: str, intent: dict, source_id: str | None = None) -> dict:
         if not self.llm or not isinstance(intent, dict):
             return intent
@@ -1231,7 +1481,7 @@ $relation_catalog
             instance_id = str(item.get("id", "") or item.get("instance_id", "")).strip()
             if not instance_id:
                 instance_id = f"{entity_name.lower()}_{idx}"
-            instance_id = re.sub(r"[^a-zA-Z0-9_]", "_", instance_id)
+            instance_id = re.sub(r"[^a-zA-Z0-9_\u4e00-\u9fa5]", "_", instance_id)
             if not instance_id or instance_id in instance_ids:
                 continue
             instance_ids.add(instance_id)
@@ -1700,10 +1950,14 @@ $relation_catalog
         return None
 
     @staticmethod
-    def _json_for_log(payload) -> str:
+    def _json_for_log(payload, pretty: bool = False) -> str:
         try:
+            if pretty:
+                return json.dumps(payload, ensure_ascii=False, indent=2)
             return json.dumps(payload, ensure_ascii=False)
         except Exception:
             return str(payload)
+
+
 
 

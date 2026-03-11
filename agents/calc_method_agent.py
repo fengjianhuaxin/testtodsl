@@ -23,7 +23,7 @@ class CalcMethodAgent(BaseAgent):
         output_fields = intent.get("output_fields", []) or []
         extracted_fields = input_data.get("extracted_fields", []) or []
         conditions = input_data.get("conditions", []) or []
-        entities = intent.get("target_entities", []) or []
+        entities = self._collect_target_entities(intent)
 
         group_by = calc_params.get("group_by")
         if isinstance(group_by, str):
@@ -807,3 +807,34 @@ class CalcMethodAgent(BaseAgent):
         text = str(question or "")
         explicit_tokens = ("分别", "各自")
         return any(token in text for token in explicit_tokens)
+
+    @staticmethod
+    def _collect_target_entities(intent: dict) -> list:
+        entities = []
+
+        for item in intent.get("target_entities", []) if isinstance(intent.get("target_entities", []), list) else []:
+            name = str(item).strip().upper()
+            if name and name not in entities:
+                entities.append(name)
+
+        raw_instances = intent.get("entity_instances", [])
+        if isinstance(raw_instances, list):
+            for item in raw_instances:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("entity", "")).strip().upper()
+                if name and name not in entities:
+                    entities.append(name)
+
+        for section in ("conditions", "output_fields"):
+            rows = intent.get(section, [])
+            if not isinstance(rows, list):
+                continue
+            for item in rows:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("entity", "")).strip().upper()
+                if name and name not in entities:
+                    entities.append(name)
+
+        return entities
