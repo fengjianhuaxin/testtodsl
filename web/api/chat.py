@@ -183,20 +183,57 @@ def get_history():
 @chat_bp.route("/chat/history/<chat_id>")
 def get_chat_detail(chat_id):
     """获取某次对话的完整中间产物"""
+    from web.auth import get_current_user
+    from flask import session as flask_session
+
+    token = flask_session.get("token") or request.headers.get("X-Token")
+    user = get_current_user(token)
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
     history = _load_json(HISTORY_FILE)
-    entry = next((h for h in history if h["id"] == chat_id), None)
+    entry = next((h for h in history if h.get("id") == chat_id and h.get("user") == user["username"]), None)
     if not entry:
         return jsonify({"error": "记录不存在"}), 404
 
-    run_id = entry.get("run_id", "")
-    intermediates_file = os.path.join(config.OUTPUT_DIR, run_id, "intermediates.json")
+    run_id = str(entry.get("run_id", "")).strip()
+    run_dir = os.path.join(config.OUTPUT_DIR, run_id) if run_id else ""
+
+    intermediates_file = os.path.join(run_dir, "intermediates.json") if run_dir else ""
     intermediates = {}
-    if os.path.exists(intermediates_file):
+    if intermediates_file and os.path.exists(intermediates_file):
         with open(intermediates_file, "r", encoding="utf-8") as f:
             intermediates = json.load(f)
 
-    llm_traces_pretty = _load_text(os.path.join(config.OUTPUT_DIR, run_id, "llm_traces_pretty.md"))
-    return jsonify({**entry, "intermediates": intermediates, "llm_traces_pretty": llm_traces_pretty})
+    result_file = os.path.join(run_dir, "result.json") if run_dir else ""
+    result_data = {}
+    if result_file and os.path.exists(result_file):
+        with open(result_file, "r", encoding="utf-8") as f:
+            result_data = json.load(f)
+
+    dsl_file = os.path.join(run_dir, "dsl_query.json") if run_dir else ""
+    dsl_data = {}
+    if dsl_file and os.path.exists(dsl_file):
+        with open(dsl_file, "r", encoding="utf-8") as f:
+            dsl_data = json.load(f)
+
+    chart_url = None
+    chart_file = os.path.join(run_dir, "chart.png") if run_dir else ""
+    if run_id and os.path.exists(chart_file):
+        chart_url = f"/api/chart/{run_id}"
+
+    llm_traces_pretty = _load_text(os.path.join(run_dir, "llm_traces_pretty.md")) if run_dir else ""
+    return jsonify({
+        **entry,
+        "run_id": run_id,
+        "answer": result_data.get("answer", entry.get("answer", "")),
+        "compute_result": result_data.get("compute_result", []),
+        "chart_url": chart_url,
+        "has_chart": chart_url is not None,
+        "dsl": dsl_data,
+        "intermediates": intermediates,
+        "llm_traces_pretty": llm_traces_pretty,
+    })
 
 
 @chat_bp.route("/download/dsl/<run_id>")
