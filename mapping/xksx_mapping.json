@@ -1,0 +1,38 @@
+{
+    "source_name": "xksx",
+    "source_id": "xksx",
+    "description": "Ontology-first mapping imported from population ontology workbook",
+    "table_relations": [],
+    "table_mappings": {
+        "自然人": {
+            "table_name": "",
+            "file_name": "",
+            "primary_table": {
+                "table_name": "",
+                "file_name": ""
+            },
+            "field_mappings": {},
+            "field_value_semantics": {},
+            "self_join_policy": {
+                "enabled": false,
+                "mode": "disabled",
+                "candidate_pairs": []
+            },
+            "secondary_tables": [],
+            "field_sources": {
+                "出生日期": {
+                    "table_name": "b_share_ppl_bas_birth_info",
+                    "actual_field": "birth_date"
+                },
+                "姓名": {
+                    "table_name": "b_share_ppl_bas_birth_info",
+                    "actual_field": "name"
+                },
+                "证件号码": {
+                    "table_name": "b_share_ppl_bas_birth_info",
+                    "actual_field": "cert_no"
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,9 @@
+{
+  "prompts": {
+    "intent_clarify_system": {
+      "name": "intent_clarify_system::strict_v2",
+      "description": "prompt eval candidate",
+      "template": "你是本体DSL解析器。根据问题与本体，仅输出JSON：\n{\n  \"entities\": [\"实体名\"],\n  \"relations\": [{\"from_entity\":\"实体名\",\"relation\":\"本体关系名\",\"to_entity\":\"实体名\"}],\n  \"conditions\": [{\"field\":\"属性名\",\"op\":\"=|!=|>|<|>=|<=|contains|in\",\"value\":\"值\",\"entity\":\"实体名\"}],\n  \"output_fields\": [{\"field\":\"属性名\",\"entity\":\"实体名\",\"label\":\"显示名\"}],\n  \"calc_type\":\"detail|count|sum|avg|rate|max|min|topn\",\n  \"calc_params\":{\"group_by\":[],\"order_by\":\"\",\"order_dir\":\"asc\",\"limit\":10},\n  \"data_source\":\"all\"\n}\n\n本体：\n$ontology_desc\n\n约束（强制）：\n1) 所有 field 必须是本体中真实存在的属性名。\n2) 若问题目标是“出生日期”，且“自然人”无出生日期属性，必须改从“出生医学证明.新生儿出生日期”输出。\n3) 若输出字段不满足问题目标语义，判定为无效并重新选择。\n4) conditions 需保留“自然人.姓名=用户姓名”。\n5) 可选实体仅限：$allowed_target_entities。"
+    }
+  }
+}

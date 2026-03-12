@@ -1,0 +1,283 @@
+{
+  "question": "张三什么时候出生的",
+  "source_id": "xksx",
+  "candidate_file": "",
+  "results": [
+    {
+      "candidate_name": "strict_v2",
+      "elapsed_sec": 13.109,
+      "error": "",
+      "evaluation": {
+        "question": "张三什么时候出生的",
+        "passed": true,
+        "score": 5,
+        "checks": {
+          "has_birth_output": true,
+          "has_name_condition": true,
+          "has_birth_entity": true,
+          "has_person_entity": true,
+          "no_wrong_name_output": true
+        },
+        "entities_seen": [
+          "出生医学证明",
+          "卫健委",
+          "自然人"
+        ]
+      },
+      "entity_selection": {
+        "target_entities": [
+          "出生医学证明",
+          "卫健委",
+          "自然人"
+        ],
+        "primary_entity": "出生医学证明",
+        "target_entity_keys": [
+          "出生医学证明",
+          "卫健委",
+          "自然人"
+        ],
+        "primary_entity_key": "出生医学证明",
+        "confidence": 0.95,
+        "source": "llm",
+        "use_scoped": true
+      },
+      "clarified_intent": {
+        "entity_instances": [
+          {
+            "id": "出生医学证明_1",
+            "entity": "出生医学证明",
+            "role": "主体"
+          },
+          {
+            "id": "卫健委_2",
+            "entity": "卫健委",
+            "role": "关联对象"
+          },
+          {
+            "id": "自然人_3",
+            "entity": "自然人",
+            "role": "关联对象"
+          }
+        ],
+        "relations": [
+          {
+            "from_instance": "出生医学证明_1",
+            "relation": "关联",
+            "to_instance": "卫健委_2"
+          },
+          {
+            "from_instance": "出生医学证明_1",
+            "relation": "关联",
+            "to_instance": "自然人_3"
+          }
+        ],
+        "conditions": [
+          {
+            "instance_id": "自然人_3",
+            "field": "姓名",
+            "op": "=",
+            "value": "张三",
+            "entity": "自然人"
+          }
+        ],
+        "output_fields": [
+          {
+            "instance_id": "出生医学证明_1",
+            "field": "新生儿出生日期",
+            "entity": "出生医学证明",
+            "label": "出生日期"
+          }
+        ],
+        "calc_type": "detail",
+        "calc_params": {
+          "order_dir": "asc"
+        },
+        "data_source": "all"
+      },
+      "clarify_trace_prompt": "",
+      "clarify_trace_response": "",
+      "temp_prompt_path": "D:\\Codex\\sql_create_json版_项目数据版_人口本体2.0\\Demo1\\test\\prompt_eval_outputs\\_tmp_prompts\\intent_prompt_eval_strict_v2_015e5f0a\\prompt_templates.json"
+    },
+    {
+      "candidate_name": "current",
+      "elapsed_sec": 14.05,
+      "error": "",
+      "evaluation": {
+        "question": "张三什么时候出生的",
+        "passed": true,
+        "score": 5,
+        "checks": {
+          "has_birth_output": true,
+          "has_name_condition": true,
+          "has_birth_entity": true,
+          "has_person_entity": true,
+          "no_wrong_name_output": true
+        },
+        "entities_seen": [
+          "出生医学证明",
+          "卫健委",
+          "自然人"
+        ]
+      },
+      "entity_selection": {
+        "target_entities": [
+          "出生医学证明",
+          "卫健委",
+          "自然人"
+        ],
+        "primary_entity": "出生医学证明",
+        "target_entity_keys": [
+          "出生医学证明",
+          "卫健委",
+          "自然人"
+        ],
+        "primary_entity_key": "出生医学证明",
+        "confidence": 0.95,
+        "source": "llm",
+        "use_scoped": true
+      },
+      "clarified_intent": {
+        "entity_instances": [
+          {
+            "id": "出生医学证明_1",
+            "entity": "出生医学证明",
+            "role": "主体"
+          },
+          {
+            "id": "卫健委_2",
+            "entity": "卫健委",
+            "role": "关联对象"
+          },
+          {
+            "id": "自然人_3",
+            "entity": "自然人",
+            "role": "关联对象"
+          }
+        ],
+        "relations": [
+          {
+            "from_instance": "出生医学证明_1",
+            "relation": "关联",
+            "to_instance": "卫健委_2"
+          },
+          {
+            "from_instance": "出生医学证明_1",
+            "relation": "关联",
+            "to_instance": "自然人_3"
+          }
+        ],
+        "conditions": [
+          {
+            "instance_id": "自然人_3",
+            "field": "姓名",
+            "op": "=",
+            "value": "张三",
+            "entity": "自然人"
+          }
+        ],
+        "output_fields": [
+          {
+            "instance_id": "出生医学证明_1",
+            "field": "新生儿出生日期",
+            "entity": "出生医学证明",
+            "label": "新生儿出生日期"
+          }
+        ],
+        "calc_type": "detail",
+        "calc_params": {},
+        "data_source": "all"
+      },
+      "clarify_trace_prompt": "## 角色\n你是NL2DSL语义解析引擎，专门负责将用户的自然语言查询转换为结构化的语义DSL（Domain Specific Language）。你精通本体图谱映射、实体关系抽取、计算意图识别。\n\n## 任务目标\n将用户输入的自然语言问题，依据提供的本体上下文，准确解析为JSON格式的语义DSL。该DSL将用于后续的SQL生成与数据查询。\n核心要求：\n1. 精准识别实体、属性、关系、筛选条件、计算规则\n2. 遇到歧义时必须标记澄清需求，禁止猜测填充\n\n## 本体上下文：\n本体范围: 实体粗选后子集\n实体定义:\n  [出生医学证明]: 记录出生信息，父母信息\n    - 出生医学证明编号\n    - 新生儿出生日期\n    - 新生儿出生地\n    - 新生儿国籍\n    - 新生儿姓名\n    - 新生儿性别\n    - 新生儿民族\n    - 母亲证件号码\n    - 父亲证件号码\n    - 母亲证件类型\n    - 父亲证件类型\n    - 母亲姓名\n    - 父亲姓名\n  [卫健委]: \n    - 单位名称\n  [自然人]: 是人，区别于企业，政府单位，社会组织。涉及人的宗教信仰\n    - 身份证件类型\n    - 身份证件号码\n    - 姓名\n    - 曾用名\n    - 性别\n    - 民族\n    - 国籍\n    - 婚姻状况\n    - 政治面貌\n    - 宗教信仰\n关系定义:\n  卫健委 --[签发]--> 出生医学证明\n  自然人 --[持有]--> 出生医学证明\n  自然人 --[办理出生登记]--> 卫健委\n  自然人 --[婚姻关系]--> 自然人\n  自然人 --[亲子关系]--> 自然人\n  自然人 --[离异关系]--> 自然人\n\n\n\n## 输出要求\n请严格只返回 JSON（不要输出解释文字），格式如下：\n{\n  \"entity\": [\n    \"实体名\"\n  ],\n  \"relations\": [\n    {\"from_entity\":\"实体名\",\"relation\":\"本体关系名\",\"to_entity\":\"实体名\"}\n  ],\n  \"conditions\": [\n    {\"field\":\"属性名\",\"op\":\"=|!=|>|<|>=|<=|contains|in\",\"value\":\"值\",\"entity\":\"实体名\"}\n  ],\n  \"output_fields\": [\n    {\"field\":\"属性名\",\"entity\":\"实体名\"}\n  ],\n  \"calc_type\": \"detail|count|sum|avg|rate|max|min|topn\",\n  \"calc_params\": {\n    \"group_by\": [\"属性名或实体名.属性名\"],\n    \"order_by\": \"属性名或实体名.属性名或__metric__\",\n    \"order_dir\": \"asc或desc\",\n    \"limit\": 10\n  }\n}\n\n## 约束\n1) conditions.entity、output_fields.entity 只能来自本体实体；可选实体仅限：出生医学证明、卫健委、自然人。\n2) conditions.field、output_fields.field、calc_params.group_by/order_by 只能来自本体属性。\n3) relations 仅表达本体语义关系。\n4) 若当前实体不含目标属性，需要引入关联实体并通过本体关系补齐；不可解时 output_fields 可为空。\n5) “各/分别/每个/分布/按XX”需给出 group_by，并把分组字段放入 output_fields。\n6) “最高/最多/最大” => order_by=__metric__, order_dir=desc, limit=1；“最低/最少/最小”相反。\n7) 时间条件（date/datetime）按时间范围表达，禁止 contains/like。",
+      "clarify_trace_response": "{\n  \"entity\": [\n    \"自然人\",\n    \"出生医学证明\"\n  ],\n  \"relations\": [\n    {\"from_entity\":\"自然人\",\"relation\":\"持有\",\"to_entity\":\"出生医学证明\"}\n  ],\n  \"conditions\": [\n    {\"field\":\"姓名\",\"op\":\"=\",\"value\":\"张三\",\"entity\":\"自然人\"}\n  ],\n  \"output_fields\": [\n    {\"field\":\"新生儿出生日期\",\"entity\":\"出生医学证明\"}\n  ],\n  \"calc_type\": \"detail\",\n  \"calc_params\": {}\n}",
+      "temp_prompt_path": "D:\\Codex\\sql_create_json版_项目数据版_人口本体2.0\\Demo1\\test\\prompt_eval_outputs\\_tmp_prompts\\intent_prompt_eval_current_0ff94d57\\prompt_templates.json"
+    },
+    {
+      "candidate_name": "strict_v1",
+      "elapsed_sec": 11.604,
+      "error": "",
+      "evaluation": {
+        "question": "张三什么时候出生的",
+        "passed": false,
+        "score": 4,
+        "checks": {
+          "has_birth_output": false,
+          "has_name_condition": true,
+          "has_birth_entity": true,
+          "has_person_entity": true,
+          "no_wrong_name_output": true
+        },
+        "entities_seen": [
+          "出生医学证明",
+          "卫健委",
+          "自然人"
+        ]
+      },
+      "entity_selection": {
+        "target_entities": [
+          "出生医学证明",
+          "卫健委",
+          "自然人"
+        ],
+        "primary_entity": "出生医学证明",
+        "target_entity_keys": [
+          "出生医学证明",
+          "卫健委",
+          "自然人"
+        ],
+        "primary_entity_key": "出生医学证明",
+        "confidence": 0.95,
+        "source": "llm",
+        "use_scoped": true
+      },
+      "clarified_intent": {
+        "entity_instances": [
+          {
+            "id": "出生医学证明_1",
+            "entity": "出生医学证明",
+            "role": "主体"
+          },
+          {
+            "id": "卫健委_2",
+            "entity": "卫健委",
+            "role": "关联对象"
+          },
+          {
+            "id": "自然人_3",
+            "entity": "自然人",
+            "role": "关联对象"
+          }
+        ],
+        "relations": [
+          {
+            "from_instance": "出生医学证明_1",
+            "relation": "关联",
+            "to_instance": "卫健委_2"
+          },
+          {
+            "from_instance": "出生医学证明_1",
+            "relation": "关联",
+            "to_instance": "自然人_3"
+          }
+        ],
+        "conditions": [
+          {
+            "instance_id": "自然人_3",
+            "field": "姓名",
+            "op": "=",
+            "value": "张三",
+            "entity": "自然人"
+          }
+        ],
+        "output_fields": [],
+        "calc_type": "detail",
+        "calc_params": {
+          "order_dir": "asc"
+        },
+        "data_source": "all"
+      },
+      "clarify_trace_prompt": "你是一个意图澄清智能体，请把用户问题解析成结构化 JSON。\n本体上下文：\n本体范围: 实体粗选后子集\n实体定义:\n  [出生医学证明]: 记录出生信息，父母信息\n    - 出生医学证明编号\n    - 新生儿出生日期\n    - 新生儿出生地\n    - 新生儿国籍\n    - 新生儿姓名\n    - 新生儿性别\n    - 新生儿民族\n    - 母亲证件号码\n    - 父亲证件号码\n    - 母亲证件类型\n    - 父亲证件类型\n    - 母亲姓名\n    - 父亲姓名\n  [卫健委]: \n    - 单位名称\n  [自然人]: 是人，区别于企业，政府单位，社会组织。涉及人的宗教信仰\n    - 身份证件类型\n    - 身份证件号码\n    - 姓名\n    - 曾用名\n    - 性别\n    - 民族\n    - 国籍\n    - 婚姻状况\n    - 政治面貌\n    - 宗教信仰\n关系定义:\n  卫健委 --[签发]--> 出生医学证明\n  自然人 --[持有]--> 出生医学证明\n  自然人 --[办理出生登记]--> 卫健委\n  自然人 --[婚姻关系]--> 自然人\n  自然人 --[亲子关系]--> 自然人\n  自然人 --[离异关系]--> 自然人\n\n\n\n请严格只返回 JSON（不要输出解释文字），格式如下：\n{\n  \"entities\": [\"实体名\"],\n  \"relations\": [{\"from_entity\":\"实体名\",\"relation\":\"本体关系名\",\"to_entity\":\"实体名\"}],\n  \"conditions\": [{\"field\":\"属性名\",\"op\":\"=|!=|>|<|>=|<=|contains|in\",\"value\":\"值\",\"entity\":\"实体名\"}],\n  \"output_fields\": [{\"field\":\"属性名\",\"entity\":\"实体名\",\"label\":\"显示名\"}],\n  \"calc_type\": \"detail|count|sum|avg|rate|max|min|topn\",\n  \"calc_params\": {\"group_by\":[],\"order_by\":\"\",\"order_dir\":\"asc\",\"limit\":10},\n  \"data_source\": \"all\"\n}\n\n规则：\n1) entities/conditions.entity/output_fields.entity 只能从以下实体中选：出生医学证明、卫健委、自然人。\n2) output_fields.field 必须与本体属性名完全一致，禁止输出同义词字段（如“出生日期”）。\n3) 问题含“出生/出生日期/什么时候”时，output_fields 必须输出日期语义属性。\n4) 若当前实体无目标属性，且1跳关联实体有目标属性，必须引入关联实体并输出其属性。\n5) 禁止把 conditions.field 直接复用到 output_fields.field，除非问题明确询问该字段本身。\n6) 仅返回 JSON。",
+      "clarify_trace_response": "{\n  \"entities\": [\"自然人\"],\n  \"relations\": [],\n  \"conditions\": [{\"field\":\"姓名\",\"op\":\"=\",\"value\":\"张三\",\"entity\":\"自然人\"}],\n  \"output_fields\": [{\"field\":\"出生日期\",\"entity\":\"自然人\",\"label\":\"出生日期\"}],\n  \"calc_type\": \"detail\",\n  \"calc_params\": {\"group_by\":[],\"order_by\":\"\",\"order_dir\":\"asc\",\"limit\":10},\n  \"data_source\": \"all\"\n}",
+      "temp_prompt_path": "D:\\Codex\\sql_create_json版_项目数据版_人口本体2.0\\Demo1\\test\\prompt_eval_outputs\\_tmp_prompts\\intent_prompt_eval_strict_v1_86416f0a\\prompt_templates.json"
+    }
+  ]
+}
