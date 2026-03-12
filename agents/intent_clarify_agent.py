@@ -529,6 +529,19 @@ $relation_catalog
             return {}
         normalized = dict(calc_params)
 
+        for key in ("calc_field", "rate_field", "metric_field"):
+            raw_value = str(normalized.get(key, "")).strip()
+            if not raw_value:
+                continue
+            if raw_value == "*":
+                normalized[key] = "*"
+                continue
+            resolved = self._normalize_calc_field_ref(raw_value, default_entity, token_to_key, allowed_entities)
+            if resolved:
+                normalized[key] = resolved
+            else:
+                normalized.pop(key, None)
+
         group_by = normalized.get("group_by", [])
         if isinstance(group_by, str):
             group_by = [group_by]

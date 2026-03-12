@@ -17,7 +17,6 @@ class DSLQueryAgent(BaseAgent):
         conditions = input_data.get("conditions", [])
         extracted_fields = input_data.get("extracted_fields", [])
         calc_rule = input_data.get("calc_rule", {})
-        query_spec = input_data.get("query_spec", {})
         dispatch = input_data.get("dispatch", {})
         self.log("生成 DSL 查询语句...")
 
@@ -49,17 +48,187 @@ class DSLQueryAgent(BaseAgent):
 
         effective_fields = extracted_fields
         effective_calc_rule = calc_rule
-        if isinstance(query_spec, dict) and query_spec:
-            effective_fields = self._merge_fields_for_query_spec(query_plan, extracted_fields, query_spec)
-            effective_calc_rule = self._calc_rule_from_query_spec(query_spec, calc_rule)
+        effective_query_plan = self._prune_query_plan_for_sql(
+            intent=intent,
+            query_plan=query_plan,
+            conditions=conditions,
+            fields=effective_fields,
+            calc_rule=effective_calc_rule,
+        )
 
-        sparql = self._generate_sparql(intent, query_plan, conditions, effective_fields, effective_calc_rule)
-        sql = self._generate_sql(source_id, query_plan, conditions, effective_fields, effective_calc_rule)
-        dsl_results[source_id] = {"sparql": sparql, "sql": sql}
-        self.log(f"[{source_id}] SQL:\\n{sql}")
+        try:
+            sparql = self._generate_sparql(intent, effective_query_plan, conditions, effective_fields, effective_calc_rule)
+            sql = self._generate_sql(source_id, effective_query_plan, conditions, effective_fields, effective_calc_rule)
+            dsl_results[source_id] = {"sparql": sparql, "sql": sql}
+            self.log(f"[{source_id}] SQL:\\n{sql}")
+        except Exception as exc:
+            dsl_results[source_id] = {"sparql": "", "sql": "", "error": str(exc)}
+            self.log(f"[{source_id}] SQL生成失败: {exc}")
 
         self.log("DSL 生成完成: 1个数据源")
         return {**input_data, "dsl_query": dsl_results}
+
+    def _prune_query_plan_for_sql(self, intent: dict, query_plan: dict, conditions: list, fields: list, calc_rule: dict) -> dict:
+        if not isinstance(query_plan, dict):
+            query_plan = {}
+
+        required_entities = self._collect_required_entities_for_sql(intent, conditions, fields, calc_rule)
+        original_entities = query_plan.get("entities", [])
+        if not isinstance(original_entities, list):
+            original_entities = []
+
+        entity_items = []
+        seen = set()
+
+        def _append_entity(entity_name: str):
+            name = str(entity_name or "").strip().upper()
+            if not name or name in seen:
+                return
+            seen.add(name)
+
+            for item in original_entities:
+                if not isinstance(item, dict):
+                    continue
+                candidate = str(item.get("name", "")).strip().upper()
+                if candidate == name:
+                    entity_items.append(item)
+                    return
+
+            entity_def = self.ontology.get_entity(name) or {}
+            entity_items.append(
+                {
+                    "name": name,
+                    "instance_id": f"{name.lower()}_{len(entity_items) + 1}",
+                    "label": entity_def.get("label", name),
+                    "properties": list((entity_def.get("properties", {}) or {}).keys()),
+                }
+            )
+
+        for entity_name in required_entities:
+            _append_entity(entity_name)
+
+        if not entity_items and original_entities:
+            first = original_entities[0]
+            if isinstance(first, dict):
+                _append_entity(first.get("name", ""))
+
+        if len(entity_items) <= 1:
+            return {
+                **query_plan,
+                "entities": entity_items,
+                "joins": [],
+            }
+
+        raw_joins = query_plan.get("joins", [])
+        if not isinstance(raw_joins, list):
+            raw_joins = []
+        join_type_by_pair = {}
+        for item in raw_joins:
+            if not isinstance(item, dict):
+                continue
+            left_entity = str(item.get("left_entity", "")).strip().upper()
+            right_entity = str(item.get("right_entity", "")).strip().upper()
+            if not left_entity or not right_entity:
+                continue
+            join_type_by_pair[(left_entity, right_entity)] = self._normalize_join_type(item.get("join_type", "inner"))
+
+        pruned_joins = []
+        for idx in range(1, len(entity_items)):
+            left_item = entity_items[idx - 1]
+            right_item = entity_items[idx]
+            left_entity = str(left_item.get("name", "")).strip().upper()
+            right_entity = str(right_item.get("name", "")).strip().upper()
+            join_type = join_type_by_pair.get((left_entity, right_entity), "inner")
+            pruned_joins.append(
+                {
+                    "left_entity": left_entity,
+                    "right_entity": right_entity,
+                    "left_instance": str(left_item.get("instance_id", "")).strip(),
+                    "right_instance": str(right_item.get("instance_id", "")).strip(),
+                    "join_type": join_type,
+                    "reason": "dsl_entities",
+                }
+            )
+
+        return {
+            **query_plan,
+            "entities": entity_items,
+            "joins": pruned_joins,
+        }
+
+    def _collect_required_entities_for_sql(self, intent: dict, conditions: list, fields: list, calc_rule: dict) -> list[str]:
+        result = []
+        seen = set()
+
+        def _add_entity(entity_name: str):
+            name = str(entity_name or "").strip().upper()
+            if not name or name in seen:
+                return
+            seen.add(name)
+            result.append(name)
+
+        target_entities = intent.get("target_entities", [])
+        if isinstance(target_entities, str):
+            target_entities = [target_entities]
+        if isinstance(target_entities, list):
+            for item in target_entities:
+                _add_entity(item)
+
+        instances = intent.get("entity_instances", [])
+        if isinstance(instances, list):
+            for item in instances:
+                if not isinstance(item, dict):
+                    continue
+                _add_entity(item.get("entity", ""))
+
+        for item in fields or []:
+            if isinstance(item, dict):
+                _add_entity(item.get("entity", ""))
+
+        for item in conditions or []:
+            if isinstance(item, dict):
+                _add_entity(item.get("entity", ""))
+
+        calc_params = calc_rule.get("params", {}) if isinstance(calc_rule, dict) else {}
+        if not isinstance(calc_params, dict):
+            calc_params = {}
+
+        for key in ("calc_field", "rate_field", "metric_field"):
+            entity_hint, _ = self._split_field_ref(calc_params.get(key, ""))
+            if entity_hint:
+                _add_entity(entity_hint)
+
+        group_by = calc_params.get("group_by", [])
+        if isinstance(group_by, str):
+            group_by = [group_by]
+        if isinstance(group_by, list):
+            for field_ref in group_by:
+                entity_hint, _ = self._split_field_ref(field_ref)
+                if entity_hint:
+                    _add_entity(entity_hint)
+
+        order_by = str(calc_params.get("order_by", "")).strip()
+        if order_by:
+            entity_hint, _ = self._split_field_ref(order_by)
+            if entity_hint:
+                _add_entity(entity_hint)
+
+        measures = calc_params.get("measures", [])
+        if isinstance(measures, dict):
+            measures = [measures]
+        if isinstance(measures, list):
+            for item in measures:
+                if not isinstance(item, dict):
+                    continue
+                entity_hint, _ = self._split_field_ref(item.get("field", ""))
+                if entity_hint:
+                    _add_entity(entity_hint)
+
+        primary_entity = str(intent.get("primary_entity", "")).strip().upper()
+        if primary_entity:
+            _add_entity(primary_entity)
+
+        return result
 
     def _generate_sparql(self, intent, query_plan, conditions, fields, calc_rule):
         entities = query_plan.get("entities", [])
@@ -237,6 +406,11 @@ class DSLQueryAgent(BaseAgent):
             entity_hint, field_name = self._split_field_ref(metric_field)
             _add_field(entity_hint, field_name)
 
+        calc_field = str(calc_params.get("calc_field", "")).strip()
+        if calc_field and calc_field != "*":
+            entity_hint, field_name = self._split_field_ref(calc_field)
+            _add_field(entity_hint, field_name)
+
         measure_specs = self._normalize_measure_specs(calc_params.get("measures", []))
         for item in measure_specs:
             field_ref = str(item.get("field", "")).strip()
@@ -381,7 +555,7 @@ class DSLQueryAgent(BaseAgent):
     def _generate_sql(self, source_id, query_plan, conditions, fields, calc_rule):
         entities = query_plan.get("entities", [])
         if not entities:
-            return "-- 无法生成 SQL：缺少实体信息"
+            raise ValueError("缺少实体信息，无法生成SQL")
 
         join_type_map = self._build_join_type_map(query_plan)
         table_aliases = {}
@@ -419,7 +593,9 @@ class DSLQueryAgent(BaseAgent):
         for index, entity in enumerate(entities):
             entity_name = str(entity.get("name", "")).strip().upper()
             instance_id = str(entity.get("instance_id", "")).strip() or f"{entity_name.lower()}_{index+1}"
-            table_name = self.mapping.get_table_name(source_id, entity_name) or entity_name.lower()
+            table_name = str(self.mapping.get_table_name(source_id, entity_name) or "").strip()
+            if not table_name:
+                raise ValueError(f"[{source_id}] 实体 {entity_name} 缺少主表映射，无法生成SQL")
             alias = f"t{alias_cursor}"
             alias_cursor += 1
             table_aliases[instance_id] = alias
@@ -553,9 +729,10 @@ class DSLQueryAgent(BaseAgent):
                 self.log(f"[{source_id}] JOIN类型: {prev_entity} -> {entity_name} = {join_type.upper()}")
                 joined_instances.add(instance_id)
             else:
-                self.log(f"[{source_id}] JOIN键: {prev_entity} -> {entity_name} 未找到可用关联键")
-                from_parts.append(f"{table_name} {alias}")
-                joined_instances.add(instance_id)
+                raise ValueError(
+                    f"[{source_id}] JOIN键缺失: {prev_entity} -> {entity_name}。"
+                    "请在本体关系(from_field/to_field)或table_relations中显式配置"
+                )
 
             if entity_internal_joins:
                 join_parts.extend(entity_internal_joins)
@@ -585,6 +762,18 @@ class DSLQueryAgent(BaseAgent):
                 "alias": display_alias,
                 "type": field.get("type", "string"),
             })
+
+        if calc_type == "count":
+            count_target_sql = self._resolve_count_target_sql(
+                source_id=source_id,
+                calc_params=calc_params,
+                entities=entities,
+                resolve_alias=resolve_alias,
+                secondary_aliases_by_instance=secondary_aliases_by_instance,
+                default_secondary_aliases=default_secondary_aliases,
+            )
+            if count_target_sql:
+                calc_params["count_target_sql"] = count_target_sql
 
         if calc_type == "group_count":
             self._prepare_group_count_params(
@@ -626,7 +815,7 @@ class DSLQueryAgent(BaseAgent):
         join_sql = "\n".join(join_parts)
 
         extras = []
-        grouped_calc_types = {"group_count", "rate", "sum", "avg", "max", "min", "topn"}
+        grouped_calc_types = {"count", "group_count", "rate", "sum", "avg", "max", "min", "topn"}
         group_info_keys = set()
         if calc_type in grouped_calc_types:
             group_by = calc_params.get("group_by", [])
@@ -724,7 +913,7 @@ class DSLQueryAgent(BaseAgent):
                 except Exception:
                     pass
 
-        if calc_type == "group_count" and group_info_keys:
+        if calc_type in {"group_count", "count"} and group_info_keys:
             metric_alias = "count_value"
             order_by = str(calc_params.get("order_by", "")).strip()
             order_dir = str(calc_params.get("order_dir", "desc")).strip().lower()
@@ -809,6 +998,60 @@ class DSLQueryAgent(BaseAgent):
         if text in {"left", "left_join", "left join"}:
             return "left"
         return "inner"
+
+    def _resolve_count_target_sql(
+        self,
+        source_id: str,
+        calc_params: dict,
+        entities: list,
+        resolve_alias,
+        secondary_aliases_by_instance: dict,
+        default_secondary_aliases: dict,
+    ) -> str:
+        if not isinstance(calc_params, dict):
+            return ""
+
+        calc_field = str(calc_params.get("calc_field", "")).strip()
+        if not calc_field or calc_field == "*":
+            return ""
+
+        entity_hint, field_name = self._split_field_ref(calc_field)
+        if not field_name or field_name == "*":
+            return ""
+
+        entity_name = str(entity_hint or "").strip().upper()
+        if not entity_name:
+            if isinstance(entities, list) and entities:
+                entity_name = str(entities[0].get("name", "")).strip().upper()
+        if not entity_name:
+            return ""
+
+        entity_instance = ""
+        found_entity = False
+        for item in entities if isinstance(entities, list) else []:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name", "")).strip().upper()
+            if name != entity_name:
+                continue
+            found_entity = True
+            entity_instance = str(item.get("instance_id", "")).strip()
+            break
+        if not found_entity:
+            raise ValueError(f"count字段引用实体不存在于查询范围: {entity_name}")
+
+        binding = self._resolve_field_binding(source_id, entity_name, field_name)
+        alias = self._resolve_binding_alias(
+            source_id=source_id,
+            entity_name=entity_name,
+            entity_instance=entity_instance,
+            binding=binding,
+            resolve_primary_alias=resolve_alias,
+            secondary_aliases_by_instance=secondary_aliases_by_instance,
+            default_secondary_aliases=default_secondary_aliases,
+        )
+        actual_field = str(binding.get("actual_field", "")).strip() or field_name
+        return f"{alias}.{actual_field}" if alias else actual_field
 
     def _prepare_group_count_params(
         self,
@@ -1101,7 +1344,32 @@ class DSLQueryAgent(BaseAgent):
             return "SELECT *"
 
         if calc_type == "count":
-            return "SELECT COUNT(*) AS total_count"
+            group_by = calc_params.get("group_by", [])
+            if isinstance(group_by, str):
+                group_by = [group_by]
+            if not isinstance(group_by, list):
+                group_by = []
+
+            group_fields_sql = []
+            for group_field in group_by:
+                info = self._resolve_select_info(select_infos, group_field)
+                if not info:
+                    continue
+                group_fields_sql.append(f"{info['sql_expr']} AS {self._format_alias(info['alias'])}")
+
+            target_sql = str(calc_params.get("count_target_sql", "")).strip()
+            distinct = bool(calc_params.get("count_distinct", calc_params.get("distinct", False)))
+            if target_sql:
+                if distinct:
+                    count_expr = f"COUNT(DISTINCT {target_sql})"
+                else:
+                    count_expr = f"COUNT({target_sql})"
+            else:
+                count_expr = "COUNT(*)"
+
+            if group_fields_sql:
+                return f"SELECT {', '.join(group_fields_sql)}, {count_expr} AS count_value"
+            return f"SELECT {count_expr} AS total_count"
 
         if calc_type == "rate":
             metric_alias = str(calc_params.get("metric_alias", "rate_value")).strip() or "rate_value"
@@ -1491,29 +1759,53 @@ class DSLQueryAgent(BaseAgent):
                 "right_actual": ",".join(right_actual_fields),
             }
 
-        left_mapping = self.mapping.get_field_mapping(source_id, left_entity)
-        right_mapping = self.mapping.get_field_mapping(source_id, right_entity)
-        for left_onto, left_actual in left_mapping.items():
-            if right_entity.lower() in left_onto.lower() or left_onto.endswith("_id"):
-                for right_onto, right_actual in right_mapping.items():
-                    if right_onto == left_onto or right_actual == left_actual:
-                        return [(left_actual, right_actual)], {
-                            "source": "fallback_guess",
-                            "left_onto": left_onto,
-                            "right_onto": right_onto,
-                            "left_actual": left_actual,
-                            "right_actual": right_actual,
-                        }
-        for left_onto, left_actual in left_mapping.items():
-            for right_onto, right_actual in right_mapping.items():
-                if left_onto == right_onto and left_onto.endswith("_id"):
-                    return [(left_actual, right_actual)], {
-                        "source": "fallback_guess",
-                        "left_onto": left_onto,
-                        "right_onto": right_onto,
-                        "left_actual": left_actual,
-                        "right_actual": right_actual,
-                    }
+        table_pairs, table_meta = self._find_join_key_from_table_relations(source_id, left_entity, right_entity)
+        if table_pairs:
+            return table_pairs, table_meta
+
+        return None, None
+
+    def _find_join_key_from_table_relations(self, source_id: str, left_entity: str, right_entity: str):
+        if not hasattr(self.mapping, "get_table_relations"):
+            return None, None
+
+        left_table = str(self.mapping.get_table_name(source_id, left_entity) or "").strip().lower()
+        right_table = str(self.mapping.get_table_name(source_id, right_entity) or "").strip().lower()
+        if not left_table or not right_table:
+            return None, None
+
+        relations = self.mapping.get_table_relations(source_id)
+        if not isinstance(relations, list):
+            return None, None
+
+        for relation in relations:
+            if not isinstance(relation, dict):
+                continue
+            rel_left = str(relation.get("left_table", "")).strip().lower()
+            rel_right = str(relation.get("right_table", "")).strip().lower()
+            join_pairs = self._normalize_binding_join_pairs(relation.get("join_pairs", []))
+            if not join_pairs:
+                continue
+
+            if rel_left == left_table and rel_right == right_table:
+                return join_pairs, {
+                    "source": "table_relations",
+                    "left_onto": rel_left,
+                    "right_onto": rel_right,
+                    "left_actual": ",".join([left for left, _ in join_pairs]),
+                    "right_actual": ",".join([right for _, right in join_pairs]),
+                }
+
+            if rel_left == right_table and rel_right == left_table:
+                reversed_pairs = [(right, left) for left, right in join_pairs]
+                return reversed_pairs, {
+                    "source": "table_relations",
+                    "left_onto": rel_right,
+                    "right_onto": rel_left,
+                    "left_actual": ",".join([left for left, _ in reversed_pairs]),
+                    "right_actual": ",".join([right for _, right in reversed_pairs]),
+                }
+
         return None, None
 
     def _resolve_join_actual_field(self, source_id: str, entity_name: str, ontology_field: str) -> str:
@@ -1772,104 +2064,6 @@ class DSLQueryAgent(BaseAgent):
             "limit_clause": limit_clause,
         }
 
-    def _calc_rule_from_query_spec(self, query_spec: dict, fallback_calc_rule: dict) -> dict:
-        if not isinstance(query_spec, dict):
-            return fallback_calc_rule
-
-        mode = str(query_spec.get("query_mode", "")).strip().lower()
-        if not mode:
-            return fallback_calc_rule
-
-        params = dict(fallback_calc_rule.get("params", {})) if isinstance(fallback_calc_rule, dict) else {}
-
-        dimensions = query_spec.get("dimensions", [])
-        if isinstance(dimensions, str):
-            dimensions = [dimensions]
-        if not isinstance(dimensions, list):
-            dimensions = []
-        dimensions = [str(item).strip() for item in dimensions if str(item).strip()]
-        if dimensions:
-            params["group_by"] = dimensions
-
-        sort_items = query_spec.get("sort", [])
-        if isinstance(sort_items, dict):
-            sort_items = [sort_items]
-        if isinstance(sort_items, list) and sort_items:
-            first_sort = sort_items[0] if isinstance(sort_items[0], dict) else {}
-            order_by = str(first_sort.get("by", "")).strip()
-            order_dir = str(first_sort.get("dir", "desc")).strip().lower()
-            if order_by:
-                params["order_by"] = order_by
-            if order_dir in ("asc", "desc"):
-                params["order_dir"] = order_dir
-
-        limit = query_spec.get("limit")
-        try:
-            if limit is not None:
-                limit_num = int(limit)
-                if limit_num > 0:
-                    params["limit"] = limit_num
-        except Exception:
-            pass
-
-        fallback_type = str((fallback_calc_rule or {}).get("type", "")).strip().lower()
-
-        if mode == "detail":
-            if params.get("order_by") and params.get("limit"):
-                return {"type": "topn", "params": params}
-            return {"type": "detail", "params": params}
-
-        if mode == "custom_sql":
-            return {"type": "custom_sql", "params": params}
-
-        measures = self._normalize_measure_specs(query_spec.get("measures", []))
-        if not measures:
-            # topn + 分组但无显式度量时，回退为“按分组计数排序”。
-            if fallback_type == "topn" and dimensions:
-                params.setdefault("metric_agg", "count")
-                params.setdefault("metric_alias", "metric_value")
-                params.setdefault("order_by", "__metric__")
-                params.setdefault("order_dir", "desc")
-                params.setdefault("limit", 10)
-                return {"type": "topn", "params": params}
-            return fallback_calc_rule
-
-        params["measures"] = measures
-        first_measure = measures[0]
-        agg = str(first_measure.get("agg", "")).strip().lower()
-        measure_field = str(first_measure.get("field", "")).strip()
-        measure_alias = str(first_measure.get("alias", "")).strip()
-
-        if fallback_type == "topn":
-            if measure_field:
-                params["metric_field"] = measure_field
-            params["metric_agg"] = agg if agg in ("sum", "avg", "max", "min", "count") else "sum"
-            params["metric_alias"] = measure_alias or str(params.get("metric_alias", "metric_value")).strip() or "metric_value"
-            params.setdefault("order_by", "__metric__")
-            params.setdefault("order_dir", "desc")
-            params.setdefault("limit", 10)
-            return {"type": "topn", "params": params}
-
-        if agg == "count":
-            calc_type = "group_count" if dimensions else "count"
-        elif agg in ("sum", "avg", "max", "min", "rate"):
-            calc_type = agg
-        else:
-            return fallback_calc_rule
-
-        if calc_type == "rate":
-            if measure_field:
-                params["rate_field"] = measure_field
-            options = first_measure.get("options", {})
-            if isinstance(options, dict):
-                true_values = options.get("true_values", [])
-                if isinstance(true_values, list) and true_values:
-                    params["rate_true_values"] = true_values
-            if measure_alias:
-                params["metric_alias"] = measure_alias
-
-        return {"type": calc_type, "params": params}
-
     @staticmethod
     def _normalize_measure_specs(measures) -> list:
         if isinstance(measures, dict):
@@ -1897,62 +2091,3 @@ class DSLQueryAgent(BaseAgent):
             normalized.append(item)
         return normalized
 
-    def _merge_fields_for_query_spec(self, query_plan: dict, extracted_fields: list, query_spec: dict) -> list:
-        merged = []
-        seen = set()
-
-        def append_field(entity_name: str, field_name: str, field_type: str = "string"):
-            entity = str(entity_name or "").strip()
-            field = str(field_name or "").strip()
-            if not entity or not field:
-                return
-            key = (entity.upper(), field.upper())
-            if key in seen:
-                return
-            seen.add(key)
-            merged.append({"entity": entity, "field": field, "label": field, "type": field_type})
-
-        for item in extracted_fields or []:
-            if not isinstance(item, dict):
-                continue
-            entity = str(item.get("entity", "")).strip()
-            field = str(item.get("field", "")).strip()
-            if not entity or not field:
-                continue
-            key = (entity.upper(), field.upper())
-            if key in seen:
-                continue
-            seen.add(key)
-            merged.append(item)
-
-        default_entity = ""
-        entities = query_plan.get("entities", [])
-        if isinstance(entities, list) and entities:
-            first = entities[0]
-            if isinstance(first, dict):
-                default_entity = str(first.get("name", "")).strip()
-
-        dimensions = query_spec.get("dimensions", [])
-        if isinstance(dimensions, str):
-            dimensions = [dimensions]
-        if isinstance(dimensions, list):
-            for item in dimensions:
-                entity_hint, field_name = self._split_field_ref(item)
-                append_field(entity_hint or default_entity, field_name, "string")
-
-        measures = query_spec.get("measures", [])
-        if isinstance(measures, dict):
-            measures = [measures]
-        if isinstance(measures, list):
-            for measure in measures:
-                if not isinstance(measure, dict):
-                    continue
-                field_ref = str(measure.get("field", "")).strip()
-                if not field_ref or field_ref == "*":
-                    continue
-                agg = str(measure.get("agg", "")).strip().lower()
-                entity_hint, field_name = self._split_field_ref(field_ref)
-                field_type = "number" if agg in ("sum", "avg", "max", "min", "count") else "string"
-                append_field(entity_hint or default_entity, field_name, field_type)
-
-        return merged

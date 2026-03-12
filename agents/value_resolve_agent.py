@@ -7,10 +7,8 @@ from agents.base_agent import BaseAgent
 class ValueResolveAgent(BaseAgent):
     """Resolve condition values using data-layer semantics and LLM."""
 
-    MODEL_FALLBACK_THRESHOLD = 0.6
     TEXT_OPS = {"=", "!=", "contains", "in"}
     STRICT_ALIAS_FIELDS = {"AREACODE", "AREA_CODE", "PROVINCE", "CITY", "COUNTY", "REGION"}
-    STRICT_LITERAL_FIELDS = {"NAME", "CERT_NO", "CERT_TYPE", "ID", "ID_NO", "CODE", "UUID"}
 
     def __init__(self, llm_client, mapping_manager, prompt_manager=None):
         super().__init__("值归一智能体", "第二段字段值归一：闭集选择或模型判断")
@@ -298,68 +296,12 @@ class ValueResolveAgent(BaseAgent):
         }
 
     def _resolve_without_closed_set(self, question: str, entity: str, field: str, op: str, value) -> tuple[object, dict]:
-        if str(op or "").strip().lower() == "=" and self._is_strict_literal_field(field):
-            return value, {
-                "strategy": "model_free",
-                "source": "strict_field",
-                "confidence": 1.0,
-                "changed": False,
-            }
-
-        if not self.llm:
-            return value, {
-                "strategy": "model_free",
-                "source": "passthrough",
-                "confidence": 0.0,
-                "changed": False,
-            }
-
-        if op == "in" and isinstance(value, list):
-            items = []
-            changed = False
-            min_conf = 1.0
-            for one in value:
-                resolved_one, meta = self._resolve_scalar_without_closed_set(question, entity, field, one)
-                items.append(resolved_one)
-                changed = changed or bool(meta.get("changed"))
-                min_conf = min(min_conf, float(meta.get("confidence", 0.0)))
-            return items, {
-                "strategy": "model_free",
-                "source": "llm",
-                "confidence": min_conf if items else 0.0,
-                "changed": changed,
-            }
-
-        return self._resolve_scalar_without_closed_set(question, entity, field, value)
-
-    def _resolve_scalar_without_closed_set(self, question: str, entity: str, field: str, value) -> tuple[object, dict]:
-        raw_text = str(value).strip()
-        if not raw_text:
-            return value, {
-                "strategy": "model_free",
-                "source": "empty",
-                "confidence": 0.0,
-                "changed": False,
-            }
-
-        normalized_value, confidence = self._llm_free_resolve(
-            question=question,
-            entity=entity,
-            field=field,
-            raw_value=raw_text,
-        )
-        if normalized_value and confidence >= self.MODEL_FALLBACK_THRESHOLD:
-            return normalized_value, {
-                "strategy": "model_free",
-                "source": "llm",
-                "confidence": confidence,
-                "changed": normalized_value != value,
-            }
-
+        # No closed-set semantics: keep literal user value to avoid semantic flips
+        # (e.g. "!= 未婚" being rewritten as "!= 已婚").
         return value, {
             "strategy": "model_free",
-            "source": "fallback",
-            "confidence": confidence,
+            "source": "passthrough_no_semantics",
+            "confidence": 0.0,
             "changed": False,
         }
 
@@ -369,19 +311,6 @@ class ValueResolveAgent(BaseAgent):
         if field_upper in cls.STRICT_ALIAS_FIELDS:
             return True
         return any(token in field_upper for token in ("AREA", "PROVINCE", "CITY", "COUNTY", "REGION"))
-
-    @classmethod
-    def _is_strict_literal_field(cls, field: str) -> bool:
-        field_upper = str(field or "").strip().upper()
-        if field_upper in cls.STRICT_LITERAL_FIELDS:
-            return True
-        if field_upper.endswith("_NAME"):
-            return True
-        if field_upper.endswith("_CERT_NO"):
-            return True
-        if field_upper.endswith("_ID"):
-            return True
-        return False
 
     @staticmethod
     def _lookup_alias(raw_value: str, aliases: dict) -> str:
@@ -453,54 +382,58 @@ class ValueResolveAgent(BaseAgent):
             confidence = max(0.0, min(1.0, confidence))
             if selected.upper() == "UNKNOWN":
                 return "", confidence
-            return selected, confidence
+            normalized = self._normalize_closed_set_selection(selected, closed_set, labels)
+            return normalized, confidence
         except Exception as exc:
             self.log(f"闭集值选择失败: {entity}.{field} -> {exc}")
             return "", 0.0
 
-    def _llm_free_resolve(self, question: str, entity: str, field: str, raw_value: str) -> tuple[str, float]:
-        default_system = (
-            "你是字段值归一器。"
-            "基于问题语义，将用户值归一成更适合数据库过滤的值。"
-            "如果不确定，保持原值。"
-            "输出 JSON: {\"resolved_value\":\"值\",\"confidence\":0到1}"
-        )
-        system_prompt = self._render_prompt(
-            key="value_resolve_free_system",
-            default_template=default_system,
-            context={
-                "question": question,
-                "entity": entity,
-                "field": field,
-                "raw_value": raw_value,
-            },
-        )
-        user_message = self._render_prompt(
-            key="value_resolve_free_user",
-            default_template=(
-                "问题: $question\n"
-                "字段: $entity.$field\n"
-                "用户原值: $raw_value"
-            ),
-            context={
-                "question": question,
-                "entity": entity,
-                "field": field,
-                "raw_value": raw_value,
-            },
-        )
+    @staticmethod
+    def _normalize_closed_set_selection(selected_value: str, closed_set: list, labels: dict) -> str:
+        text = str(selected_value or "").strip()
+        if not text:
+            return ""
 
-        try:
-            parsed = self.llm.chat_json(system_prompt, user_message)
-            resolved = str(parsed.get("resolved_value", "")).strip()
-            confidence = float(parsed.get("confidence", 0.0))
-            confidence = max(0.0, min(1.0, confidence))
-            if not resolved:
-                return "", confidence
-            return resolved, confidence
-        except Exception as exc:
-            self.log(f"自由值归一失败: {entity}.{field} -> {exc}")
-            return "", 0.0
+        candidates = [str(item).strip() for item in (closed_set or []) if str(item).strip()]
+        if not candidates:
+            return ""
+
+        # Try exact/case-insensitive match first.
+        for item in candidates:
+            if text == item:
+                return item
+        text_lower = text.lower()
+        for item in candidates:
+            if text_lower == item.lower():
+                return item
+
+        # Common model output: "值: 标签" 或 "- 值: 标签"
+        stripped = text.strip("`\"' ").lstrip("-* ").strip()
+        splits = [stripped]
+        if "：" in stripped:
+            splits.append(stripped.split("：", 1)[0].strip())
+        if ":" in stripped:
+            splits.append(stripped.split(":", 1)[0].strip())
+
+        for part in splits:
+            if not part:
+                continue
+            for item in candidates:
+                if part == item or part.lower() == item.lower():
+                    return item
+
+        # Match by label text as fallback.
+        if isinstance(labels, dict):
+            for item in candidates:
+                label = str(labels.get(item, "")).strip()
+                if not label:
+                    continue
+                if stripped == label or stripped.lower() == label.lower():
+                    return item
+                if stripped.endswith(label):
+                    return item
+
+        return ""
 
     def _render_prompt(self, key: str, default_template: str, context: dict) -> str:
         if self.prompts:

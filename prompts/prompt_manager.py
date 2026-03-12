@@ -261,21 +261,6 @@ $prop_desc
 候选值:
 $options_text""",
         },
-        "value_resolve_free_system": {
-            "name": "值归一自由-系统提示词",
-            "description": "步骤05B：无闭集时的值归一",
-            "template": """你是字段值归一器。
-基于问题语义，将用户值归一成更适合数据库过滤的值。
-如果不确定，保持原值。
-输出 JSON: {"resolved_value":"值","confidence":0到1}""",
-        },
-        "value_resolve_free_user": {
-            "name": "值归一自由-用户提示词",
-            "description": "步骤05B：变量：$question $entity $field $raw_value",
-            "template": """问题: $question
-字段: $entity.$field
-用户原值: $raw_value""",
-        },
     }
 
     def __init__(self, prompt_file: str):

@@ -11,7 +11,6 @@ class QualityCheckAgent(BaseAgent):
         compute_result = input_data.get("compute_result", [])
         extracted_fields = input_data.get("extracted_fields", [])
         calc_rule = input_data.get("calc_rule", {})
-        query_spec = input_data.get("query_spec", {})
         self.log(f"质检验证: {len(compute_result)}条结果...")
 
         issues = []
@@ -20,9 +19,7 @@ class QualityCheckAgent(BaseAgent):
             issues.append("查询结果为空，可能是条件过严或无匹配数据")
 
         if compute_result:
-            expected_fields = self._build_expected_fields(
-                calc_rule, extracted_fields, query_spec=query_spec
-            )
+            expected_fields = self._build_expected_fields(calc_rule, extracted_fields)
             actual_fields = set(compute_result[0].keys()) if compute_result else set()
             missing = expected_fields - actual_fields - {"_source"}
             if missing:
@@ -49,9 +46,7 @@ class QualityCheckAgent(BaseAgent):
         }
 
     @staticmethod
-    def _build_expected_fields(
-        calc_rule: dict, extracted_fields: list, query_spec: dict | None = None
-    ) -> set:
+    def _build_expected_fields(calc_rule: dict, extracted_fields: list) -> set:
         field_display_map = {}
         for item in extracted_fields or []:
             if not isinstance(item, dict):
@@ -76,67 +71,6 @@ class QualityCheckAgent(BaseAgent):
             if field_name:
                 expected.add(_display_name(field_name))
 
-        if (
-            isinstance(query_spec, dict)
-            and str(query_spec.get("query_mode", "")).strip().lower() == "aggregate"
-        ):
-            dimensions = query_spec.get("dimensions", [])
-            if isinstance(dimensions, str):
-                dimensions = [dimensions]
-            if not isinstance(dimensions, list):
-                dimensions = []
-            expected = set()
-            for dim in dimensions:
-                text = str(dim).strip()
-                if not text:
-                    continue
-                if "." in text:
-                    text = text.rsplit(".", 1)[1].strip()
-                if text:
-                    expected.add(_display_name(text))
-
-            measures = query_spec.get("measures", [])
-            if isinstance(measures, dict):
-                measures = [measures]
-            alias_defaults = {
-                "count": "count_value",
-                "sum": "sum_value",
-                "avg": "average_value",
-                "max": "max_value",
-                "min": "min_value",
-                "rate": "rate_value",
-            }
-            if isinstance(measures, list):
-                for measure in measures:
-                    if not isinstance(measure, dict):
-                        continue
-                    agg = str(measure.get("agg", "")).strip().lower()
-                    alias = str(measure.get("alias", "")).strip() or alias_defaults.get(
-                        agg, ""
-                    )
-                    measure_field = str(measure.get("field", "")).strip()
-                    measure_field_leaf = (
-                        measure_field.rsplit(".", 1)[1].strip()
-                        if "." in measure_field
-                        else measure_field
-                    )
-                    if (
-                        agg in {"sum", "avg", "max", "min"}
-                        and measure_field
-                        and alias
-                        and alias.upper()
-                        in {
-                            measure_field.upper(),
-                            measure_field_leaf.upper(),
-                            str(alias_defaults.get(agg, "")).strip().upper(),
-                        }
-                    ):
-                        alias = _display_name(measure_field_leaf)
-                    if alias:
-                        expected.add(alias)
-            if expected:
-                return expected
-
         calc_type = str((calc_rule or {}).get("type", "detail")).strip().lower()
         params = (calc_rule or {}).get("params", {})
         if not isinstance(params, dict):
@@ -158,7 +92,7 @@ class QualityCheckAgent(BaseAgent):
                 group_fields.add(_display_name(text))
 
         agg_alias = {
-            "count": {"total_count", "count_value", "count"},
+            "count": set(),
             "sum": {"sum_value"},
             "avg": {"average_value"},
             "max": {"max_value"},
@@ -171,7 +105,10 @@ class QualityCheckAgent(BaseAgent):
 
         if calc_type in agg_alias:
             expected = set(group_fields) if group_fields else set()
-            expected.update(agg_alias.get(calc_type, set()))
+            if calc_type == "count":
+                expected.add("count_value" if group_fields else "total_count")
+            else:
+                expected.update(agg_alias.get(calc_type, set()))
             if calc_type in {"sum", "avg", "max", "min"}:
                 group_upper = {name.upper() for name in group_fields}
                 for item in extracted_fields or []:

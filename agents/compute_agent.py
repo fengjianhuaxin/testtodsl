@@ -16,7 +16,6 @@ class ComputeAgent(BaseAgent):
         conditions = input_data.get("conditions", [])
         extracted_fields = input_data.get("extracted_fields", [])
         calc_rule = input_data.get("calc_rule", {})
-        query_spec = input_data.get("query_spec", {})
         dispatch = input_data.get("dispatch", {})
         dsl_query = input_data.get("dsl_query", {})
 
@@ -24,13 +23,21 @@ class ComputeAgent(BaseAgent):
         source_id = str(dispatch.get("source_id", "")).strip() or str(input_data.get("source_id", "")).strip()
 
         try:
-            sql_text = dsl_query.get(source_id, {}).get("sql")
-            if sql_text and hasattr(self.store, "execute_sql"):
+            dsl_payload = dsl_query.get(source_id, {}) if isinstance(dsl_query, dict) else {}
+            if isinstance(dsl_payload, dict) and dsl_payload:
+                dsl_error = str(dsl_payload.get("error", "")).strip()
+                if dsl_error:
+                    raise ValueError(f"DSL生成失败: {dsl_error}")
+                sql_text = str(dsl_payload.get("sql", "")).strip()
+                if not sql_text:
+                    raise ValueError("DSL未产出可执行SQL")
+                if not hasattr(self.store, "execute_sql"):
+                    raise ValueError("当前数据存储不支持 execute_sql，无法执行DSL SQL")
                 self.log(f"  数据源 {source_id}: 使用 SQL 执行")
                 result = self.store.execute_sql(source_id, sql_text)
             else:
                 result = self._execute_for_source(
-                    source_id, query_plan, conditions, extracted_fields, calc_rule, query_spec
+                    source_id, query_plan, conditions, extracted_fields, calc_rule
                 )
 
             if not isinstance(result, pd.DataFrame):
@@ -48,85 +55,21 @@ class ComputeAgent(BaseAgent):
             "compute_result_df": final_df,
         }
 
-    def _execute_for_source(self, source_id, query_plan, conditions, fields, calc_rule, query_spec=None):
+    def _execute_for_source(self, source_id, query_plan, conditions, fields, calc_rule):
         entities = query_plan.get("entities", [])
         if not entities:
             return pd.DataFrame()
 
-        calc_type, calc_params = self._resolve_calc_rule(calc_rule, query_spec)
+        calc_type, calc_params = self._resolve_calc_rule(calc_rule)
 
         if len(entities) == 1:
             entity_name = entities[0]["name"]
             return self._simple_query(source_id, entity_name, conditions, fields, calc_type, calc_params)
         return self._join_query(source_id, query_plan, conditions, fields, calc_type, calc_params)
 
-    def _resolve_calc_rule(self, calc_rule: dict, query_spec: dict | None) -> tuple[str, dict]:
+    def _resolve_calc_rule(self, calc_rule: dict) -> tuple[str, dict]:
         calc_type = str((calc_rule or {}).get("type", "detail")).strip().lower() or "detail"
         calc_params = dict((calc_rule or {}).get("params", {})) if isinstance(calc_rule, dict) else {}
-        if not isinstance(query_spec, dict) or not query_spec:
-            return calc_type, calc_params
-
-        mode = str(query_spec.get("query_mode", "")).strip().lower()
-        if mode == "detail":
-            return ("topn", calc_params) if calc_params.get("order_by") and calc_params.get("limit") else ("detail", calc_params)
-        if mode == "custom_sql":
-            return "custom_sql", calc_params
-        if mode != "aggregate":
-            return calc_type, calc_params
-
-        dimensions = query_spec.get("dimensions", [])
-        if isinstance(dimensions, str):
-            dimensions = [dimensions]
-        if isinstance(dimensions, list) and dimensions:
-            calc_params["group_by"] = [str(item).strip() for item in dimensions if str(item).strip()]
-
-        sort_items = query_spec.get("sort", [])
-        if isinstance(sort_items, dict):
-            sort_items = [sort_items]
-        if isinstance(sort_items, list) and sort_items:
-            sort_item = sort_items[0] if isinstance(sort_items[0], dict) else {}
-            order_by = str(sort_item.get("by", "")).strip()
-            order_dir = str(sort_item.get("dir", "desc")).strip().lower()
-            if order_by:
-                calc_params["order_by"] = order_by
-            if order_dir in ("asc", "desc"):
-                calc_params["order_dir"] = order_dir
-
-        try:
-            limit = query_spec.get("limit", None)
-            if limit is not None:
-                limit_num = int(limit)
-                if limit_num > 0:
-                    calc_params["limit"] = limit_num
-        except Exception:
-            pass
-
-        measures = query_spec.get("measures", [])
-        if isinstance(measures, dict):
-            measures = [measures]
-        if not isinstance(measures, list) or not measures:
-            return calc_type, calc_params
-        measure = measures[0] if isinstance(measures[0], dict) else {}
-        agg = str(measure.get("agg", "")).strip().lower()
-
-        if agg == "count":
-            return ("group_count", calc_params) if calc_params.get("group_by") else ("count", calc_params)
-        if agg in ("sum", "avg", "max", "min"):
-            return agg, calc_params
-        if agg == "rate":
-            rate_field = str(measure.get("field", "")).strip()
-            if rate_field:
-                calc_params["rate_field"] = self._normalize_field_ref(rate_field)
-            options = measure.get("options", {}) if isinstance(measure, dict) else {}
-            if isinstance(options, dict):
-                true_values = options.get("true_values", [])
-                if isinstance(true_values, list) and true_values:
-                    calc_params["rate_true_values"] = true_values
-            alias = str(measure.get("alias", "")).strip()
-            if alias:
-                calc_params["metric_alias"] = alias
-            return "rate", calc_params
-
         return calc_type, calc_params
 
     def _simple_query(self, source_id, entity_name, conditions, fields, calc_type, calc_params):

@@ -2,9 +2,264 @@
     "source_name": "xksx",
     "source_id": "xksx",
     "description": "Ontology-first mapping imported from population ontology workbook",
-    "table_relations": [],
+    "table_relations": [
+        {
+            "left_table": "b_share_ppl_bas_birth_info",
+            "right_table": "b_share_ppl_bas_funeral_info",
+            "join_pairs": [
+                {
+                    "left": "cert_no",
+                    "right": "cert_no"
+                }
+            ],
+            "join_type": "inner"
+        },
+        {
+            "left_table": "b_share_ppl_bas_birth_info",
+            "right_table": "b_share_ppl_bas_hukou_reg",
+            "join_pairs": [
+                {
+                    "left": "cert_no",
+                    "right": "cert_no"
+                }
+            ],
+            "join_type": "inner"
+        },
+        {
+            "left_table": "b_share_ppl_bas_birth_info",
+            "right_table": "b_share_ppl_rel_marriage_rel",
+            "join_pairs": [
+                {
+                    "left": "cert_no",
+                    "right": "cert_no"
+                }
+            ],
+            "join_type": "inner"
+        },
+        {
+            "left_table": "b_share_ppl_bas_birth_info",
+            "right_table": "b_share_ppl_rel_marriage_rel_his",
+            "join_pairs": [
+                {
+                    "left": "cert_no",
+                    "right": "cert_no"
+                }
+            ],
+            "join_type": "inner"
+        },
+        {
+            "left_table": "b_share_ppl_bas_funeral_info",
+            "right_table": "b_share_ppl_bas_hukou_reg",
+            "join_pairs": [
+                {
+                    "left": "cert_no",
+                    "right": "cert_no"
+                }
+            ],
+            "join_type": "inner"
+        },
+        {
+            "left_table": "b_share_ppl_bas_funeral_info",
+            "right_table": "b_share_ppl_rel_marriage_rel",
+            "join_pairs": [
+                {
+                    "left": "cert_no",
+                    "right": "cert_no"
+                }
+            ],
+            "join_type": "inner"
+        },
+        {
+            "left_table": "b_share_ppl_bas_funeral_info",
+            "right_table": "b_share_ppl_rel_marriage_rel_his",
+            "join_pairs": [
+                {
+                    "left": "cert_no",
+                    "right": "cert_no"
+                }
+            ],
+            "join_type": "inner"
+        },
+        {
+            "left_table": "b_share_ppl_bas_hukou_reg",
+            "right_table": "b_share_ppl_rel_marriage_rel",
+            "join_pairs": [
+                {
+                    "left": "cert_no",
+                    "right": "cert_no"
+                }
+            ],
+            "join_type": "inner"
+        },
+        {
+            "left_table": "b_share_ppl_bas_hukou_reg",
+            "right_table": "b_share_ppl_rel_marriage_rel_his",
+            "join_pairs": [
+                {
+                    "left": "cert_no",
+                    "right": "cert_no"
+                }
+            ],
+            "join_type": "inner"
+        }
+    ],
     "table_mappings": {
         "自然人": {
+            "table_name": "b_share_ppl_bas_hukou_reg",
+            "file_name": "b_share_ppl_bas_hukou_reg.xlsx",
+            "primary_table": {
+                "table_name": "b_share_ppl_bas_hukou_reg",
+                "file_name": "b_share_ppl_bas_hukou_reg.xlsx"
+            },
+            "field_mappings": {
+                "兵役状况": "military_service_status",
+                "宗教信仰": "religion",
+                "实际居住地址": "actual_detail_addr",
+                "性别": "gender",
+                "户主姓名": "hukou_head_name",
+                "户主身份号码": "hukou_head_id_no",
+                "户籍地址": "hukou_det_addr",
+                "户籍地街路巷代码": "hukou_street_code",
+                "户籍性质": "hukou_type",
+                "户籍所在地": "hukou_loc",
+                "政治面貌": "political_status",
+                "曾用名": "prev_name",
+                "民族": "nation",
+                "籍贯": "native_place",
+                "证件号码": "cert_no",
+                "证件类型": "cert_type"
+            },
+            "field_value_semantics": {
+                "宗教信仰": {
+                    "aliases": {
+                        "不信教": "无",
+                        "信教": "有",
+                        "无信仰": "无",
+                        "无宗教": "无",
+                        "无宗教信仰": "无",
+                        "有信仰": "有",
+                        "有宗教": "有",
+                        "有宗教信仰": "有",
+                        "没有宗教信仰": "无"
+                    },
+                    "closed_set": [
+                        "有",
+                        "无"
+                    ],
+                    "confidence_threshold": 0.7,
+                    "labels": {
+                        "无": "无宗教信仰",
+                        "有": "有宗教信仰"
+                    },
+                    "rate_true_values": [
+                        "有"
+                    ],
+                    "unknown_policy": "fallback"
+                },
+                "性别": {
+                    "aliases": {},
+                    "closed_set": [
+                        "男",
+                        "女"
+                    ],
+                    "confidence_threshold": 0.7,
+                    "labels": {
+                        "女": "女生",
+                        "男": "男生"
+                    },
+                    "unknown_policy": "fallback"
+                }
+            },
+            "self_join_policy": {
+                "enabled": false,
+                "mode": "disabled",
+                "candidate_pairs": []
+            },
+            "secondary_tables": [],
+            "field_sources": {
+                "出生地": {
+                    "table_name": "b_share_ppl_bas_birth_info",
+                    "actual_field": "birth_place_prov_city_county"
+                },
+                "出生日期": {
+                    "table_name": "b_share_ppl_bas_birth_info",
+                    "actual_field": "birth_date"
+                },
+                "姓名": {
+                    "table_name": "b_share_ppl_bas_birth_info",
+                    "actual_field": "name"
+                },
+                "婚姻事项": {
+                    "table_name": "b_share_ppl_rel_marriage_rel",
+                    "actual_field": "marital_item"
+                },
+                "婚姻状况": {
+                    "table_name": "b_share_ppl_rel_marriage_rel",
+                    "actual_field": "marital_status"
+                },
+                "婚姻状况变更原因": {
+                    "table_name": "b_share_ppl_rel_marriage_rel_his",
+                    "actual_field": "marital_status_change_cause"
+                },
+                "婚姻登记类型": {
+                    "table_name": "b_share_ppl_rel_marriage_rel_his",
+                    "actual_field": "mar_type"
+                },
+                "殡葬日期": {
+                    "table_name": "b_share_ppl_bas_funeral_info",
+                    "actual_field": "funeral_date"
+                },
+                "殡葬类型": {
+                    "table_name": "b_share_ppl_bas_funeral_info",
+                    "actual_field": "funeral_type"
+                },
+                "母亲姓名": {
+                    "table_name": "b_share_ppl_bas_birth_info",
+                    "actual_field": "mother_name"
+                },
+                "母亲证件号码": {
+                    "table_name": "b_share_ppl_bas_birth_info",
+                    "actual_field": "mother_cert_no"
+                },
+                "母亲证件类型": {
+                    "table_name": "b_share_ppl_bas_birth_info",
+                    "actual_field": "mother_cert_type"
+                },
+                "父亲姓名": {
+                    "table_name": "b_share_ppl_bas_birth_info",
+                    "actual_field": "father_name"
+                },
+                "父亲证件号码": {
+                    "table_name": "b_share_ppl_bas_birth_info",
+                    "actual_field": "father_cert_no"
+                },
+                "父亲证件类型": {
+                    "table_name": "b_share_ppl_bas_birth_info",
+                    "actual_field": "father_cert_type"
+                },
+                "结离婚日期": {
+                    "table_name": "b_share_ppl_rel_marriage_rel",
+                    "actual_field": "divorce_marriage_date"
+                },
+                "配偶国籍": {
+                    "table_name": "b_share_ppl_rel_marriage_rel",
+                    "actual_field": "spouse_nationality"
+                },
+                "配偶姓名": {
+                    "table_name": "b_share_ppl_rel_marriage_rel",
+                    "actual_field": "spouse_name"
+                },
+                "配偶证件号码": {
+                    "table_name": "b_share_ppl_rel_marriage_rel",
+                    "actual_field": "spouse_cert_no"
+                },
+                "配偶证件类型": {
+                    "table_name": "b_share_ppl_rel_marriage_rel",
+                    "actual_field": "spouse_cert_type"
+                }
+            }
+        },
+        "公安局": {
             "table_name": "",
             "file_name": "",
             "primary_table": {
@@ -20,17 +275,117 @@
             },
             "secondary_tables": [],
             "field_sources": {
-                "出生日期": {
+                "单位名称": {
+                    "table_name": "b_share_ppl_bas_hukou_reg",
+                    "actual_field": "ep_src_dept"
+                }
+            }
+        },
+        "出生医学证明": {
+            "table_name": "",
+            "file_name": "",
+            "primary_table": {
+                "table_name": "",
+                "file_name": ""
+            },
+            "field_mappings": {},
+            "field_value_semantics": {},
+            "self_join_policy": {
+                "enabled": false,
+                "mode": "disabled",
+                "candidate_pairs": []
+            },
+            "secondary_tables": [],
+            "field_sources": {
+                "出生医学证明编号": {
                     "table_name": "b_share_ppl_bas_birth_info",
-                    "actual_field": "birth_date"
+                    "actual_field": "birth_cert_no"
+                }
+            }
+        },
+        "结（离）婚证": {
+            "table_name": "",
+            "file_name": "",
+            "primary_table": {
+                "table_name": "",
+                "file_name": ""
+            },
+            "field_mappings": {},
+            "field_value_semantics": {},
+            "self_join_policy": {
+                "enabled": false,
+                "mode": "disabled",
+                "candidate_pairs": []
+            },
+            "secondary_tables": [],
+            "field_sources": {
+                "登记机关": {
+                    "table_name": "b_share_ppl_rel_marriage_rel_his",
+                    "actual_field": "reg_auth"
                 },
-                "姓名": {
-                    "table_name": "b_share_ppl_bas_birth_info",
-                    "actual_field": "name"
+                "结离婚证字号": {
+                    "table_name": "b_share_ppl_rel_marriage_rel_his",
+                    "actual_field": "cert_num"
+                }
+            }
+        },
+        "户口簿": {
+            "table_name": "",
+            "file_name": "",
+            "primary_table": {
+                "table_name": "",
+                "file_name": ""
+            },
+            "field_mappings": {},
+            "field_value_semantics": {},
+            "self_join_policy": {
+                "enabled": false,
+                "mode": "disabled",
+                "candidate_pairs": []
+            },
+            "secondary_tables": [],
+            "field_sources": {
+                "户口簿编号": {
+                    "table_name": "b_share_ppl_bas_hukou_reg",
+                    "actual_field": "hukou_book_no"
                 },
-                "证件号码": {
-                    "table_name": "b_share_ppl_bas_birth_info",
-                    "actual_field": "cert_no"
+                "户籍注销日期": {
+                    "table_name": "b_share_ppl_bas_hukou_reg",
+                    "actual_field": "cancel_date"
+                },
+                "户籍注销标识": {
+                    "table_name": "b_share_ppl_bas_hukou_reg",
+                    "actual_field": "cancel_flag"
+                },
+                "户籍登记机关": {
+                    "table_name": "b_share_ppl_bas_hukou_reg",
+                    "actual_field": "hukou_reg_org"
+                }
+            }
+        },
+        "离婚判决书": {
+            "table_name": "",
+            "file_name": "",
+            "primary_table": {
+                "table_name": "",
+                "file_name": ""
+            },
+            "field_mappings": {},
+            "field_value_semantics": {},
+            "self_join_policy": {
+                "enabled": false,
+                "mode": "disabled",
+                "candidate_pairs": []
+            },
+            "secondary_tables": [],
+            "field_sources": {
+                "离婚判决时间": {
+                    "table_name": "b_share_ppl_rel_marriage_rel_his",
+                    "actual_field": "div_jud_date"
+                },
+                "离婚判决生效日期": {
+                    "table_name": "b_share_ppl_rel_marriage_rel_his",
+                    "actual_field": "div_eff_date"
                 }
             }
         }

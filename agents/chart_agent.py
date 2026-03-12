@@ -25,6 +25,13 @@ class ChartAgent(BaseAgent):
         self.log("检查是否需要生成图表...")
 
         calc_type = calc_rule.get("type", "detail")
+        calc_params = calc_rule.get("params", {}) if isinstance(calc_rule, dict) else {}
+        group_by = calc_params.get("group_by", []) if isinstance(calc_params, dict) else []
+        if isinstance(group_by, str):
+            group_by = [group_by]
+        if not isinstance(group_by, list):
+            group_by = []
+        has_group_by = bool([item for item in group_by if str(item).strip()])
         chart_path = None
 
         if not compute_result:
@@ -33,13 +40,15 @@ class ChartAgent(BaseAgent):
 
         df = pd.DataFrame(compute_result)
 
-        # 统计类查询自动生成图表
-        if calc_type in ("group_count", "count", "avg", "sum", "max", "min"):
+        # 仅分组统计自动生成图表，非分组统计只返回文本与表格。
+        if calc_type in ("group_count", "count", "avg", "sum", "max", "min", "rate", "topn") and has_group_by:
             try:
                 chart_path = self._generate_chart(df, calc_type, raw_question)
                 self.log(f"图表已生成: {chart_path}")
             except Exception as e:
                 self.log(f"图表生成失败: {e}")
+        else:
+            self.log("非分组统计，跳过图表生成")
 
         return {**input_data, "chart_path": chart_path}
 

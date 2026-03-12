@@ -19,79 +19,24 @@ class CalcMethodAgent(BaseAgent):
         intent = input_data.get("clarified_intent", {})
         calc_type = str(intent.get("calc_type", "detail")).strip().lower() or "detail"
         calc_params = dict(intent.get("calc_params", {}))
-        raw_question = str(input_data.get("raw_question") or input_data.get("question") or "").strip()
-        output_fields = intent.get("output_fields", []) or []
-        extracted_fields = input_data.get("extracted_fields", []) or []
-        conditions = input_data.get("conditions", []) or []
-        entities = self._collect_target_entities(intent)
+        if calc_type == "group_count":
+            calc_type = "count"
+        if calc_type not in {"detail", "count", "sum", "avg", "rate", "max", "min", "topn", "custom_sql"}:
+            calc_type = "detail"
 
         group_by = calc_params.get("group_by")
         if isinstance(group_by, str):
             calc_params["group_by"] = [group_by]
-
-        if calc_type != "custom_sql":
-            rate_rule, rate_reason = self._infer_rate_rule(
-                question=raw_question,
-                extracted_fields=extracted_fields,
-                output_fields=output_fields,
-                target_entities=entities,
-            )
-            if rate_rule:
-                self.log(f"比率规则识别: {rate_reason}")
-                if calc_type != "rate":
-                    self.log(f"\u89e6\u53d1\u515c\u5e95\u89c4\u5219: {rate_reason}")
-                    self.log(
-                        f"\u6839\u636e\u515c\u5e95\u89c4\u5219\u4fee\u6b63\u8ba1\u7b97\u7c7b\u578b: {calc_type} -> rate"
-                    )
-                calc_type = "rate"
-                calc_params.update(rate_rule)
-
-        if calc_type == "rate":
-            enhanced = self._enhance_rate_params(
-                input_data=input_data,
-                calc_params=calc_params,
-                extracted_fields=extracted_fields,
-                output_fields=output_fields,
-                target_entities=entities,
-                question=raw_question,
-            )
-            if enhanced:
-                calc_params.update(enhanced)
-            self._log_rate_params(calc_params, source=enhanced.get("rate_true_values_source", ""))
-
-        if calc_type == "detail":
-            inferred_type, inferred_reason = self._infer_calc_type(raw_question, output_fields)
-            if inferred_type != "detail":
-                self.log(f"\u89e6\u53d1\u515c\u5e95\u89c4\u5219: {inferred_reason}")
-                self.log(f"\u6839\u636e\u515c\u5e95\u89c4\u5219\u4fee\u6b63\u8ba1\u7b97\u7c7b\u578b: detail -> {inferred_type}")
-                calc_type = inferred_type
-
-        if calc_type in {"sum", "avg", "max", "min"}:
-            numeric_targets = self._pick_numeric_target_fields(extracted_fields, output_fields, calc_params.get("group_by", []))
-            if not numeric_targets:
-                self.log(
-                    f"\u805a\u5408\u5160\u5e95\u56de\u9000: calc_type={calc_type} \u4f46\u672a\u627e\u5230\u53ef\u805a\u5408\u7684\u6570\u503c\u5b57\u6bb5\uff0c\u6539\u56de detail"
-                )
-                calc_type = "detail"
 
         calc_rule = {
             "type": calc_type,
             "params": calc_params,
             "description": self._describe(calc_type, calc_params),
         }
-        query_spec = self._build_query_spec(
-            entities=entities,
-            conditions=conditions,
-            extracted_fields=extracted_fields,
-            output_fields=output_fields,
-            calc_type=calc_type,
-            calc_params=calc_params,
-            raw_question=raw_question,
-        )
 
         self.log(f"\u786e\u5b9a\u8ba1\u7b97\u65b9\u6cd5: {calc_type}")
         self.log(f"\u8ba1\u7b97\u89c4\u5219: {calc_rule['description']}")
-        return {**input_data, "calc_rule": calc_rule, "query_spec": query_spec}
+        return {**input_data, "calc_rule": calc_rule}
 
     def _infer_rate_rule(
         self,
@@ -519,82 +464,6 @@ class CalcMethodAgent(BaseAgent):
             desc += f"\uff0c\u53d6\u524d {params['limit']} \u6761"
         return desc
 
-    def _build_query_spec(
-        self,
-        entities: list,
-        conditions: list,
-        extracted_fields: list,
-        output_fields: list,
-        calc_type: str,
-        calc_params: dict,
-        raw_question: str = "",
-    ) -> dict:
-        entity_names = [str(item).strip() for item in entities if str(item).strip()]
-        dimensions = self._normalize_group_by(calc_params.get("group_by", []))
-        sort = self._build_sort_spec(calc_params)
-        limit = self._safe_int(calc_params.get("limit"))
-        filters = [
-            {
-                "entity": cond.get("entity", ""),
-                "field": cond.get("field", ""),
-                "op": cond.get("op", "="),
-                "value": cond.get("value", ""),
-            }
-            for cond in (conditions or [])
-            if isinstance(cond, dict) and str(cond.get("field", "")).strip()
-        ]
-
-        if calc_type == "custom_sql":
-            return {
-                "query_mode": "custom_sql",
-                "entities": entity_names,
-                "filters": filters,
-                "dimensions": dimensions,
-                "measures": [],
-                "sort": sort,
-                "limit": limit,
-            }
-
-        if calc_type == "detail":
-            return {
-                "query_mode": "detail",
-                "entities": entity_names,
-                "filters": filters,
-                "dimensions": dimensions,
-                "measures": [],
-                "sort": sort,
-                "limit": limit,
-            }
-
-        if calc_type == "topn" and not dimensions:
-            return {
-                "query_mode": "detail",
-                "entities": entity_names,
-                "filters": filters,
-                "dimensions": [],
-                "measures": [],
-                "sort": sort,
-                "limit": limit,
-            }
-
-        measures = self._build_measures(
-            calc_type=calc_type,
-            calc_params=calc_params,
-            extracted_fields=extracted_fields,
-            output_fields=output_fields,
-            dimensions=dimensions,
-            raw_question=raw_question,
-        )
-        return {
-            "query_mode": "aggregate",
-            "entities": entity_names,
-            "filters": filters,
-            "dimensions": dimensions,
-            "measures": measures,
-            "sort": sort,
-            "limit": limit,
-        }
-
     def _build_measures(
         self,
         calc_type: str,
@@ -632,7 +501,7 @@ class CalcMethodAgent(BaseAgent):
             else:
                 self.log(
                     f"兼容映射: legacy calc_type={agg_type} 但输出含数值指标 {numeric_target}，"
-                    "query_spec 按 SUM 指标构建"
+                    "按 SUM 指标构建"
                 )
             measures.append({"agg": "sum", "field": numeric_target, "alias": "sum_value"})
         return measures
