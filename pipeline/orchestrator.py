@@ -473,7 +473,6 @@ class Orchestrator:
                 lines.append("")
 
                 block_fields = [
-                    ("original_system_prompt", "Original System Prompt"),
                     ("system_prompt", "System Prompt"),
                     ("user_message", "User Message"),
                     ("response_text", "Response Text"),

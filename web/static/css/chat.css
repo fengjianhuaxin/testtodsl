@@ -367,6 +367,13 @@
     margin-top: 12px;
 }
 
+.think-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
 .think-toggle {
     display: inline-flex;
     align-items: center;
@@ -378,6 +385,7 @@
     color: var(--text-muted);
     cursor: pointer;
     transition: var(--transition);
+    flex: 1;
 }
 
 .think-toggle:hover {
@@ -387,6 +395,31 @@
 .think-toggle.open {
     color: var(--accent-light);
     background: var(--accent-glow);
+}
+
+.think-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.think-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.think-action-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent-light);
 }
 
 .think-details {
@@ -548,6 +581,74 @@
 .download-btn:hover {
     border-color: var(--accent);
     color: var(--accent-light);
+}
+
+/* LLM 明细弹窗 */
+.trace-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 24px;
+}
+
+.trace-modal.open {
+    display: flex;
+}
+
+.trace-modal-card {
+    width: min(1100px, 96vw);
+    height: min(80vh, 760px);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    background: var(--bg-primary);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.trace-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+}
+
+.trace-modal-title {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.trace-modal-close {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    cursor: pointer;
+}
+
+.trace-modal-close:hover {
+    border-color: var(--accent);
+    color: var(--accent-light);
+}
+
+.trace-modal-body {
+    margin: 0;
+    padding: 14px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex: 1;
 }
 
 /* Loading */

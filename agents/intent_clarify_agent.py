@@ -1,4 +1,5 @@
 """Intent clarify agent - parse natural language into structured intent."""
+from concurrent.futures import ThreadPoolExecutor
 import json
 import re
 from string import Template
@@ -83,10 +84,11 @@ class IntentClarifyAgent(BaseAgent):
                 "raw_question": raw_question,
                 "knowledge_context": knowledge_snippets,
                 "metric_sql_rule_hit": metric_rule_hit,
+                "query_description": self._empty_query_description(),
             }
 
         self._log_substep("01_03", "执行实体粗选")
-        entity_selection = self._select_entities_coarse(raw_question, all_entity_names)
+        entity_selection, query_description = self._collect_preparse_hints(raw_question, all_entity_names)
         selection_entities_cn = entity_selection.get("target_entities", [])
         selection_primary_cn = str(entity_selection.get("primary_entity", "")).strip()
         selection_entity_keys = entity_selection.get("target_entity_keys", [])
@@ -110,7 +112,9 @@ class IntentClarifyAgent(BaseAgent):
             )
 
         self._log_substep("01_04", "构建意图澄清提示词")
+        self._log_substep("01_03", f"query_desc: {self._json_for_log(query_description)}")
         knowledge_block = self._build_knowledge_block(knowledge_snippets)
+        query_description_block = self._build_query_description_block(query_description)
         allowed_target_entities = "未提供"
         if use_scoped_ontology and selection_entity_keys:
             selection_entity_labels = [self._entity_label(item) for item in selection_entity_keys]
@@ -121,6 +125,9 @@ class IntentClarifyAgent(BaseAgent):
 $ontology_desc
 
 $knowledge_block
+
+数据查询描述（仅作提示增强，不作为真理来源，如与原问题冲突以原问题为准）：
+$query_description_block
 
 请严格只返回 JSON（不要输出解释文字），格式如下：
 {
@@ -158,6 +165,7 @@ $knowledge_block
 9) “最高/最多/最大” => order_by=__metric__, order_dir=desc, limit=1；“最低/最少/最小”相反。
 10) 时间条件（date/datetime）按时间范围表达，禁止 contains/like。
 11) conditions.value 保留用户原始语义，不提前映射数据库编码。
+12) 数据查询描述只作为辅助信息，不得覆盖用户原问题明确表达。
 """
 
         system_prompt = self._render_prompt(
@@ -166,6 +174,7 @@ $knowledge_block
             context={
                 "ontology_desc": ontology_desc,
                 "knowledge_block": knowledge_block,
+                "query_description_block": query_description_block,
                 "allowed_target_entities": allowed_target_entities,
             },
         )
@@ -213,7 +222,125 @@ $knowledge_block
             "knowledge_context": knowledge_snippets,
             "metric_sql_rule_hit": None,
             "entity_selection": entity_selection,
+            "query_description": query_description,
         }
+
+    def _collect_preparse_hints(self, question: str, all_entities: list[str]) -> tuple[dict, dict]:
+        if not self.llm:
+            return self._select_entities_coarse(question, all_entities), self._empty_query_description()
+
+        entity_selection = None
+        query_description = None
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_entity = executor.submit(self._select_entities_coarse, question, all_entities)
+            future_query_desc = executor.submit(self._extract_query_description, question)
+            try:
+                entity_selection = future_entity.result()
+            except Exception as exc:
+                self._log_substep("01_03", f"entity selection failed: {exc}")
+            try:
+                query_description = future_query_desc.result()
+            except Exception as exc:
+                self._log_substep("01_03", f"query description extract failed: {exc}")
+
+        if not isinstance(entity_selection, dict):
+            entity_selection = self._select_entities_coarse(question, all_entities)
+        if not isinstance(query_description, dict):
+            query_description = self._empty_query_description()
+        return entity_selection, query_description
+
+    def _extract_query_description(self, question: str) -> dict:
+        default_result = self._empty_query_description()
+        if not self.llm:
+            return default_result
+
+        system_template = """请从以下数据查询描述中提取关键信息，格式为基础条件、其他条件、结果信息要素、结果形式四部分。
+
+- 基础条件：从“基本信息”字段列表中匹配，如果描述中提到则列出，未提到则不列。
+- 其他条件：从文本中提取归纳出的额外筛选条件（非基本信息）。
+- 结果信息要素：结果包含的信息字段或指标。根据结果形式的不同，提取规则如下：
+  - 如果结果形式为明细数据，则要素应为描述中明确要求返回的列名（如“返回姓名和年龄”则要素为“姓名,年龄”）；若未明确，则返回“未明确”。
+  - 如果结果形式为统计数据，则要素应为描述中统计值的含义。例如：
+    * “统计出生人数” -> 要素为“出生人数”
+    * “找出最大年龄” -> 要素为“年龄”
+    * “计算平均工资” -> 要素为“工资”
+    * 若无法推断，则返回“未明确”。
+-结果形式：包括明细数据、统计数据。如果是统计数据，请进一步说明统计类型（计数、去重计数、求和、平均值、中位数、最大值、最小值）。如果描述中指定了分组维度（如“每年”、“按月”、“分地区”等），则在统计类型后注明分组依据，格式为“统计数据：统计类型（分组依据：具体维度）”；若无分组，则仅写统计类型。
+
+基本信息包括：姓名、出生日期、户籍、婚姻状态、性别、职称、身份证号
+
+输出 JSON:
+{"基础条件":"","其他条件":"","结果信息要素":"","结果形式":""}
+"""
+        user_template = "数据查询描述：$question"
+        system_prompt = self._render_prompt(
+            key="query_desc_extract_system",
+            default_template=system_template,
+            context={},
+        )
+        user_prompt = self._render_prompt(
+            key="query_desc_extract_user",
+            default_template=user_template,
+            context={"question": question},
+        )
+        try:
+            payload = self.llm.chat_json(system_prompt, user_prompt)
+        except Exception as exc:
+            self._log_substep("01_03", f"query_desc model call failed: {exc}")
+            return default_result
+        return self._normalize_query_description(payload)
+
+    @staticmethod
+    def _empty_query_description() -> dict:
+        return {
+            "基础条件": "",
+            "其他条件": "",
+            "结果信息要素": "",
+            "结果形式": "",
+        }
+
+    def _normalize_query_description(self, payload: dict) -> dict:
+        normalized = self._empty_query_description()
+        if not isinstance(payload, dict):
+            return normalized
+
+        key_aliases = {
+            "基础条件": ["基础条件", "basic_conditions", "basic_condition", "basic"],
+            "其他条件": ["其他条件", "additional_conditions", "other_conditions", "other"],
+            "结果信息要素": ["结果信息要素", "result_elements", "result_fields", "output_elements"],
+            "结果形式": ["结果形式", "result_form", "result_type"],
+        }
+        for target_key, aliases in key_aliases.items():
+            value = ""
+            for alias in aliases:
+                if alias in payload:
+                    value = payload.get(alias)
+                    break
+            normalized[target_key] = self._normalize_query_description_value(value)
+
+        return normalized
+
+    @staticmethod
+    def _normalize_query_description_value(value) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, list):
+            text_items = [str(item).strip() for item in value if str(item).strip()]
+            return "，".join(text_items)
+        if isinstance(value, dict):
+            try:
+                return json.dumps(value, ensure_ascii=False)
+            except Exception:
+                return str(value)
+        return str(value).strip()
+
+    def _build_query_description_block(self, query_description: dict) -> str:
+        normalized = self._normalize_query_description(query_description)
+        lines = []
+        for key in ("基础条件", "其他条件", "结果信息要素", "结果形式"):
+            value = str(normalized.get(key, "")).strip() or "无"
+            lines.append(f"{key}：{value}")
+        return "\n".join(lines)
 
     def _select_entities_coarse(self, question: str, all_entities: list[str]) -> dict:
         heuristic = self._heuristic_entity_candidates(question, all_entities)

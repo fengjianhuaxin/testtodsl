@@ -1,6 +1,7 @@
 /* ============ 聊天逻辑 ============ */
 let currentUser = null;
 let depthAnalysis = false;
+const llmTraceStore = {};
 
 // ---------- 初始化 ----------
 document.addEventListener('DOMContentLoaded', async () => {
@@ -332,16 +333,19 @@ function renderThinkSection(msgId, result) {
         });
     }
 
-    // 在思考过程末尾追加真实 LLM 调用明细（来自 llm_traces_pretty.md）
-    if (result.llm_traces_pretty && String(result.llm_traces_pretty).trim()) {
-        stepHtml += `<div class="think-step">
-            <div class="think-step-title">🧾 LLM 调用明细（Prompt/Response）</div>
-            <div class="think-step-content">${escapeHtml(result.llm_traces_pretty)}</div>
-        </div>`;
+    const hasLLMTrace = !!(result.llm_traces_pretty && String(result.llm_traces_pretty).trim());
+    if (hasLLMTrace) {
+        llmTraceStore[msgId] = String(result.llm_traces_pretty);
     }
+    const traceBtn = hasLLMTrace
+        ? `<button class="think-action-btn" onclick="event.stopPropagation();openLLMTraceModal('${msgId}')">📄 LLM 明细</button>`
+        : '';
 
     return `<div class="think-section">
-        <div class="think-toggle" onclick="toggleThink('${thinkId}', this)">🧠 思考过程</div>
+        <div class="think-header">
+            <div class="think-toggle" onclick="toggleThink('${thinkId}', this)">🧠 思考过程</div>
+            <div class="think-actions">${traceBtn}</div>
+        </div>
         <div class="think-details" id="${thinkId}">${stepHtml}</div>
     </div>`;
 }
@@ -388,6 +392,46 @@ function toggleThink(id, el) {
     const details = document.getElementById(id);
     details.classList.toggle('open');
     el.classList.toggle('open');
+}
+
+function ensureLLMTraceModal() {
+    let modal = document.getElementById('llmTraceModal');
+    if (modal) return modal;
+
+    modal = document.createElement('div');
+    modal.id = 'llmTraceModal';
+    modal.className = 'trace-modal';
+    modal.innerHTML = `
+        <div class="trace-modal-card">
+            <div class="trace-modal-header">
+                <div class="trace-modal-title">LLM 调用明细（Markdown）</div>
+                <button class="trace-modal-close" onclick="closeLLMTraceModal()">✕</button>
+            </div>
+            <pre class="trace-modal-body" id="llmTraceModalBody"></pre>
+        </div>
+    `;
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeLLMTraceModal();
+    });
+    document.body.appendChild(modal);
+    return modal;
+}
+
+function openLLMTraceModal(msgId) {
+    const text = llmTraceStore[msgId];
+    if (!text) {
+        showToast('暂无 LLM 明细', 'error');
+        return;
+    }
+    const modal = ensureLLMTraceModal();
+    const body = document.getElementById('llmTraceModalBody');
+    if (body) body.textContent = text;
+    modal.classList.add('open');
+}
+
+function closeLLMTraceModal() {
+    const modal = document.getElementById('llmTraceModal');
+    if (modal) modal.classList.remove('open');
 }
 
 function toggleInterCard(id, el) {

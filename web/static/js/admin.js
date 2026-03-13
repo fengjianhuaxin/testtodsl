@@ -475,7 +475,17 @@ async function loadTableStructure() {
 // ============================================================
 // 3. 映射管理
 // ============================================================
-let mappingFieldSourceEditor = { rows: [], columnsByTable: {}, fileByTable: {} };
+let mappingFieldSourceEditor = {
+    rows: [],
+    columnsByTable: {},
+    fileByTable: {},
+    ontologyProps: [],
+    semanticsProps: [],
+    semanticsRows: [],
+    semanticsRowCursor: 0,
+    semanticsVisualDirty: false,
+    semanticsLastEdit: 'json'
+};
 let tableRelationEditor = { tableNames: [], rowCursor: 0 };
 
 async function loadMappingModule() {
@@ -746,6 +756,7 @@ async function showEditMappingModal(entityName) {
             .join('');
 
         const props = Object.keys((onto.entities?.[entityName]?.properties) || {});
+        const semanticsRows = [];
         const rows = props.map((prop, idx) => {
             const fieldMap = current.field_mappings || {};
             let srcTable = primaryTableName;
@@ -759,13 +770,33 @@ async function showEditMappingModal(entityName) {
                 srcTable = srcTable || primaryTableName;
                 srcField = sourceItem.trim();
             }
-            return { prop, srcTable: srcTable || '', srcField: srcField || '', rowIndex: idx };
+            const semantics = pickFieldSemanticsForProp(fieldSemantics, prop, srcField);
+            if (semantics && typeof semantics === 'object' && !Array.isArray(semantics) && Object.keys(semantics).length) {
+                semanticsRows.push({
+                    rowId: semanticsRows.length + 1,
+                    prop,
+                    semantics
+                });
+            }
+            return {
+                prop,
+                srcTable: srcTable || '',
+                srcField: srcField || '',
+                rowIndex: idx,
+                semantics
+            };
         });
 
         mappingFieldSourceEditor = {
             rows,
             columnsByTable,
-            fileByTable
+            fileByTable,
+            ontologyProps: props,
+            semanticsProps: rows.map(row => row.prop),
+            semanticsRows,
+            semanticsRowCursor: semanticsRows.length,
+            semanticsVisualDirty: false,
+            semanticsLastEdit: 'json'
         };
 
         showModal(`编辑映射: ${entityName}`, `
@@ -801,8 +832,36 @@ async function showEditMappingModal(entityName) {
                 </div>
             </div>
             <div class="form-row">
+                <label>字段值语义（可视化）</label>
+                <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">
+                    按需新增配置项：选择本体属性后再填写值语义。未新增的属性不会展示。
+                </div>
+                <div class="table-scroll">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>本体属性</th>
+                                <th>闭集(closed_set)</th>
+                                <th>别名(aliases)</th>
+                                <th>标签(labels)</th>
+                                <th>比率真值(rate_true_values)</th>
+                                <th>阈值</th>
+                                <th>未知策略</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="m-sem-rows-body">${renderSemanticsVisualRowsHtml()}</tbody>
+                    </table>
+                </div>
+                <div style="margin-top:8px;display:flex;gap:8px">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="addSemanticsVisualRow()">＋ 新增语义配置</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="syncSemanticsJsonFromVisual()">从可视化同步JSON</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="hydrateVisualSemanticsFromJson()">从JSON回填可视化</button>
+                </div>
+            </div>
+            <div class="form-row">
                 <label>字段值语义(JSON，高级)</label>
-                <textarea class="form-input" id="m-mvaluesem" rows="12" placeholder='{"IS_UPDATE_ON_TIME":{"closed_set":["是","否"],"labels":{"是":"按时更新","否":"未按时更新"},"aliases":{"按时更新":"是","未按时更新":"否"}}}'>${escHtml(JSON.stringify(fieldSemantics, null, 2))}</textarea>
+                <textarea class="form-input" id="m-mvaluesem" rows="12" oninput="markSemanticsJsonDirty()" placeholder='{"IS_UPDATE_ON_TIME":{"closed_set":["是","否"],"labels":{"是":"按时更新","否":"未按时更新"},"aliases":{"按时更新":"是","未按时更新":"否"}}}'>${escHtml(JSON.stringify(fieldSemantics, null, 2))}</textarea>
             </div>
             <div class="form-row">
                 <label>自连接策略(JSON，高级)</label>
@@ -812,7 +871,7 @@ async function showEditMappingModal(entityName) {
                 </div>
             </div>
         `, async () => {
-            const fieldValueSemantics = parseJsonObjectWithLabel(gv('m-mvaluesem'), '字段值语义JSON');
+            const fieldValueSemantics = resolveFieldValueSemanticsPayload();
             const selfJoinPolicyPayload = parseJsonObjectWithLabel(gv('m-mselfjoin'), '自连接策略JSON');
             const tableName = gv('m-mtable');
             const fileName = gv('m-mfile') || mappingFieldSourceEditor.fileByTable[tableName] || '';
@@ -852,6 +911,7 @@ async function showEditMappingModal(entityName) {
         });
 
         rows.forEach(row => onMappingFieldTableChange(row.rowIndex, row.srcField));
+        hydrateVisualSemanticsFromJson();
     } catch (e) {
         showToast(e.message || '加载映射失败', 'error');
     }
@@ -888,6 +948,285 @@ function onMappingFieldTableChange(rowIndex, preferredField = '') {
         }
         fieldSelect.value = currentValue;
     }
+}
+
+function markSemanticsVisualDirty() {
+    mappingFieldSourceEditor.semanticsVisualDirty = true;
+    mappingFieldSourceEditor.semanticsLastEdit = 'visual';
+}
+
+function markSemanticsJsonDirty() {
+    mappingFieldSourceEditor.semanticsLastEdit = 'json';
+}
+
+function renderSemanticsVisualRowsHtml() {
+    const rows = Array.isArray(mappingFieldSourceEditor.semanticsRows)
+        ? mappingFieldSourceEditor.semanticsRows
+        : [];
+    if (!rows.length) {
+        return '<tr><td colspan="8" style="color:var(--text-muted);text-align:center;padding:10px">暂无配置，点击“新增语义配置”</td></tr>';
+    }
+    return rows.map(row => {
+        const sem = (row.semantics && typeof row.semantics === 'object' && !Array.isArray(row.semantics))
+            ? row.semantics
+            : {};
+        const closedSet = escHtml(stringifySemanticsList(sem.closed_set || []));
+        const aliases = escHtml(stringifySemanticsKvText(sem.aliases || {}));
+        const labels = escHtml(stringifySemanticsKvText(sem.labels || {}));
+        const rateTrue = escHtml(stringifySemanticsList(sem.rate_true_values || []));
+        const threshold = Number.isFinite(Number(sem.confidence_threshold))
+            ? String(Number(sem.confidence_threshold))
+            : '';
+        const policy = ['fallback', 'ask', 'reject'].includes(String(sem.unknown_policy || '').trim().toLowerCase())
+            ? String(sem.unknown_policy || '').trim().toLowerCase()
+            : 'fallback';
+        const propOptions = ['<option value="">(选择属性)</option>']
+            .concat((mappingFieldSourceEditor.ontologyProps || []).map(prop => (
+                `<option value="${escHtml(prop)}" ${prop === row.prop ? 'selected' : ''}>${escHtml(prop)}</option>`
+            )))
+            .join('');
+        return `
+            <tr>
+                <td>
+                    <select class="form-input form-select" id="m-sem-prop-${row.rowId}" onchange="markSemanticsVisualDirty()">
+                        ${propOptions}
+                    </select>
+                </td>
+                <td><input class="form-input" id="m-sem-closed-${row.rowId}" oninput="markSemanticsVisualDirty()" placeholder="如: 男,女" value="${closedSet}"></td>
+                <td><input class="form-input" id="m-sem-alias-${row.rowId}" oninput="markSemanticsVisualDirty()" placeholder="如: 男性=男, 女性=女" value="${aliases}"></td>
+                <td><input class="form-input" id="m-sem-label-${row.rowId}" oninput="markSemanticsVisualDirty()" placeholder="如: 男=男性, 女=女性" value="${labels}"></td>
+                <td><input class="form-input" id="m-sem-rate-${row.rowId}" oninput="markSemanticsVisualDirty()" placeholder="如: 是,1,true" value="${rateTrue}"></td>
+                <td><input class="form-input" id="m-sem-threshold-${row.rowId}" oninput="markSemanticsVisualDirty()" type="number" min="0" max="1" step="0.01" value="${escHtml(threshold)}"></td>
+                <td>
+                    <select class="form-input form-select" id="m-sem-policy-${row.rowId}" onchange="markSemanticsVisualDirty()">
+                        <option value="fallback" ${policy === 'fallback' ? 'selected' : ''}>fallback</option>
+                        <option value="ask" ${policy === 'ask' ? 'selected' : ''}>ask</option>
+                        <option value="reject" ${policy === 'reject' ? 'selected' : ''}>reject</option>
+                    </select>
+                </td>
+                <td><button type="button" class="btn btn-danger btn-sm" onclick="removeSemanticsVisualRow(${row.rowId})">删</button></td>
+            </tr>`;
+    }).join('');
+}
+
+function refreshSemanticsVisualRows() {
+    const tbody = document.getElementById('m-sem-rows-body');
+    if (!tbody) return;
+    tbody.innerHTML = renderSemanticsVisualRowsHtml();
+}
+
+function addSemanticsVisualRow(seed = null) {
+    const row = seed && typeof seed === 'object' ? seed : {};
+    const used = new Set((mappingFieldSourceEditor.semanticsRows || []).map(item => String(item.prop || '').trim()).filter(Boolean));
+    const defaultProp = row.prop || (mappingFieldSourceEditor.ontologyProps || []).find(prop => !used.has(prop)) || '';
+    const next = {
+        rowId: ++mappingFieldSourceEditor.semanticsRowCursor,
+        prop: defaultProp,
+        semantics: row.semantics && typeof row.semantics === 'object' ? row.semantics : {}
+    };
+    mappingFieldSourceEditor.semanticsRows.push(next);
+    refreshSemanticsVisualRows();
+    markSemanticsVisualDirty();
+}
+
+function removeSemanticsVisualRow(rowId) {
+    mappingFieldSourceEditor.semanticsRows = (mappingFieldSourceEditor.semanticsRows || [])
+        .filter(row => row.rowId !== rowId);
+    refreshSemanticsVisualRows();
+    markSemanticsVisualDirty();
+}
+
+function splitSemanticsList(text) {
+    return String(text || '')
+        .split(/[\n,，;；]+/)
+        .map(item => String(item || '').trim())
+        .filter(Boolean);
+}
+
+function stringifySemanticsList(items) {
+    if (!Array.isArray(items)) return '';
+    return items.map(item => String(item || '').trim()).filter(Boolean).join(', ');
+}
+
+function parseSemanticsKvText(text, label) {
+    const result = {};
+    const items = String(text || '')
+        .split(/[\n,，;；]+/)
+        .map(item => String(item || '').trim())
+        .filter(Boolean);
+    for (const item of items) {
+        const eqIdx = item.indexOf('=');
+        const colonIdx = item.indexOf(':');
+        const splitIdx = eqIdx >= 0 ? eqIdx : colonIdx;
+        if (splitIdx < 0) {
+            throw new Error(`${label} 格式错误，需使用 key=value`);
+        }
+        const key = item.slice(0, splitIdx).trim();
+        const value = item.slice(splitIdx + 1).trim();
+        if (!key || !value) {
+            throw new Error(`${label} 存在空键或空值`);
+        }
+        result[key] = value;
+    }
+    return result;
+}
+
+function stringifySemanticsKvText(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return '';
+    return Object.entries(obj)
+        .map(([key, value]) => `${String(key).trim()}=${String(value).trim()}`)
+        .filter(item => item !== '=')
+        .join(', ');
+}
+
+function pickFieldSemanticsForProp(fieldSemantics, prop, actualField = '') {
+    if (!fieldSemantics || typeof fieldSemantics !== 'object') return {};
+    const candidates = [prop, String(prop || '').toUpperCase(), actualField, String(actualField || '').toUpperCase()]
+        .map(item => String(item || '').trim())
+        .filter(Boolean);
+    for (const key of candidates) {
+        const value = fieldSemantics[key];
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+            return value;
+        }
+    }
+    return {};
+}
+
+function collectSemanticsVisualPayload() {
+    const rows = Array.isArray(mappingFieldSourceEditor.semanticsRows) ? mappingFieldSourceEditor.semanticsRows : [];
+    const allowedProps = new Set(mappingFieldSourceEditor.ontologyProps || []);
+    const usedProps = new Set();
+    const payload = {};
+
+    rows.forEach(row => {
+        const idx = row.rowId;
+        const prop = String(gv(`m-sem-prop-${idx}`) || '').trim();
+        const closedSet = splitSemanticsList(gv(`m-sem-closed-${idx}`));
+        const aliases = parseSemanticsKvText(gv(`m-sem-alias-${idx}`), `${prop} aliases`);
+        const labels = parseSemanticsKvText(gv(`m-sem-label-${idx}`), `${prop} labels`);
+        const rateTrueValues = splitSemanticsList(gv(`m-sem-rate-${idx}`));
+        const thresholdText = gv(`m-sem-threshold-${idx}`);
+        const policy = gv(`m-sem-policy-${idx}`) || 'fallback';
+
+        const hasAny = closedSet.length || Object.keys(aliases).length || Object.keys(labels).length
+            || rateTrueValues.length || thresholdText;
+        if (!hasAny && !prop) return;
+        if (!prop) {
+            throw new Error('字段值语义存在未选择属性的配置行');
+        }
+        if (!allowedProps.has(prop)) {
+            throw new Error(`字段值语义属性 "${prop}" 不在本体属性中`);
+        }
+        if (usedProps.has(prop)) {
+            throw new Error(`字段值语义属性 "${prop}" 重复配置，请保留一行`);
+        }
+        usedProps.add(prop);
+        if (!hasAny) return;
+
+        if (closedSet.length) {
+            Object.entries(aliases).forEach(([, target]) => {
+                if (!closedSet.includes(String(target))) {
+                    throw new Error(`${prop} aliases 目标值 "${target}" 不在 closed_set 中`);
+                }
+            });
+            rateTrueValues.forEach(item => {
+                if (!closedSet.includes(String(item))) {
+                    throw new Error(`${prop} rate_true_values 值 "${item}" 不在 closed_set 中`);
+                }
+            });
+        }
+
+        const sem = {};
+        if (closedSet.length) sem.closed_set = closedSet;
+        if (Object.keys(aliases).length) sem.aliases = aliases;
+        if (Object.keys(labels).length) sem.labels = labels;
+        if (rateTrueValues.length) sem.rate_true_values = rateTrueValues;
+        if (thresholdText) {
+            const threshold = Number(thresholdText);
+            if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1) {
+                throw new Error(`${prop} confidence_threshold 必须在 0~1 之间`);
+            }
+            sem.confidence_threshold = threshold;
+        }
+        if (policy) sem.unknown_policy = String(policy).trim().toLowerCase();
+        payload[prop] = sem;
+    });
+
+    return payload;
+}
+
+function resolveFieldValueSemanticsPayload() {
+    const rawJson = gv('m-mvaluesem');
+    let jsonPayload = {};
+    let jsonParsed = false;
+    try {
+        jsonPayload = parseJsonObjectWithLabel(rawJson, '字段值语义JSON');
+        jsonParsed = true;
+    } catch (error) {
+        if (mappingFieldSourceEditor.semanticsLastEdit !== 'visual') {
+            throw error;
+        }
+    }
+
+    if (mappingFieldSourceEditor.semanticsLastEdit !== 'visual') {
+        return jsonPayload;
+    }
+
+    const visualPayload = collectSemanticsVisualPayload();
+    const propSet = new Set(mappingFieldSourceEditor.semanticsProps || []);
+    const merged = {};
+
+    if (jsonParsed) {
+        Object.entries(jsonPayload).forEach(([key, value]) => {
+            if (!propSet.has(key)) merged[key] = value;
+        });
+    }
+    Object.entries(visualPayload).forEach(([key, value]) => {
+        merged[key] = value;
+    });
+    return merged;
+}
+
+function syncSemanticsJsonFromVisual() {
+    try {
+        const payload = resolveFieldValueSemanticsPayload();
+        const textarea = document.getElementById('m-mvaluesem');
+        if (textarea) {
+            textarea.value = JSON.stringify(payload, null, 2);
+        }
+        showToast('已同步到JSON', 'success');
+    } catch (e) {
+        showToast(e.message || '语义配置解析失败', 'error');
+    }
+}
+
+function hydrateVisualSemanticsFromJson() {
+    let semantics = {};
+    try {
+        semantics = parseJsonObjectWithLabel(gv('m-mvaluesem'), '字段值语义JSON');
+    } catch (e) {
+        showToast(e.message || '字段值语义JSON格式错误', 'error');
+        return;
+    }
+    const rows = Array.isArray(mappingFieldSourceEditor.rows) ? mappingFieldSourceEditor.rows : [];
+    const nextRows = [];
+    rows.forEach(row => {
+        const sem = pickFieldSemanticsForProp(semantics, row.prop, row.srcField);
+        if (sem && typeof sem === 'object' && !Array.isArray(sem) && Object.keys(sem).length) {
+            nextRows.push({
+                rowId: nextRows.length + 1,
+                prop: row.prop,
+                semantics: sem
+            });
+        }
+    });
+    mappingFieldSourceEditor.semanticsRows = nextRows;
+    mappingFieldSourceEditor.semanticsRowCursor = nextRows.length;
+    refreshSemanticsVisualRows();
+    mappingFieldSourceEditor.semanticsVisualDirty = false;
+    mappingFieldSourceEditor.semanticsLastEdit = 'json';
+    showToast('可视化编辑器已按JSON回填', 'success');
 }
 
 async function showEditTableRelationsModal() {
