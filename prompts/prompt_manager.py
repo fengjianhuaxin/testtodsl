@@ -246,17 +246,6 @@ $prop_desc
             "description": "步骤00：注入原始问题，变量：$question",
             "template": "原始问题: $question",
         },
-        "join_type_system": {
-            "name": "JOIN判定-系统提示词",
-            "description": "步骤04：判定两实体连接类型（left join/join）",
-            "template": """你是SQL JOIN类型判定器。
-仅判断两表连接类型，返回JSON且只包含两个字段：
-{"type":"left join或join","reason":"简短原因"}。
-规则：
-1) 当问题要求左侧主体全量保留（即使右侧无匹配也要保留）时，type=left join。
-2) 其余场景 type=join。
-3) 禁止输出除type/reason外的字段。""",
-        },
         "relation_instance_split_system": {
             "name": "关系实例化判定-系统提示词",
             "description": "步骤01_07：单实体是否拆分为多实例自连接",
@@ -266,14 +255,6 @@ $prop_desc
             "name": "关系实例化复核-系统提示词",
             "description": "步骤01_07：已有多实例意图的自连接复核",
             "template": """你是关系实例化复核器。给定问题、单实体意图（已含多实例）与候选连接对，判断该自连接是否合理。\n仅输出JSON：\n{\"need_instance_split\":true|false,\"instances\":[{\"id\":\"inst_a\",\"role\":\"...\"},{\"id\":\"inst_b\",\"role\":\"...\"}],\"relation\":{\"left_instance\":\"inst_a\",\"left_field\":\"FIELD\",\"right_instance\":\"inst_b\",\"right_field\":\"FIELD\",\"join_type\":\"inner|left\"},\"condition_instance\":\"inst_a\",\"output_instance\":\"inst_b\"}。\n规则：\n1) 如果当前意图不该自连接，返回 need_instance_split=false。\n2) 如果应自连接，relation(left_field,right_field) 必须来自候选连接对。\n3) 可以保留现有实例关系，也可以重写为更合理的实例关系。""",
-        },
-        "join_type_user": {
-            "name": "JOIN判定-用户提示词",
-            "description": "步骤04：变量：$question $left_entity $left_label $right_entity $right_label",
-            "template": """问题: $question
-左侧实体: $left_entity($left_label)
-右侧实体: $right_entity($right_label)
-请输出JSON。""",
         },
         "value_resolve_closed_set_system": {
             "name": "值归一闭集-系统提示词",

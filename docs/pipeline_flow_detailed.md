@@ -73,27 +73,7 @@ flowchart TD
     E9 --> E10[输出clarified_intent]
 ```
 
-## 4. 步骤04 查询规划（实体图与JOIN策略）
-
-```mermaid
-flowchart TD
-    F0[读取target_entities] --> F1[构建entities和relations子图]
-    F1 --> F2{实体数是否大于1}
-
-    F2 -- 否 --> F6[仅单表查询]
-    F2 -- 是 --> F3[按相邻实体生成joins列表]
-    F3 --> F4{问句命中缺失关联语义}
-    F4 -- 是 --> F5[设置join_type等于left]
-    F4 -- 否 --> F7[设置join_type等于inner]
-
-    F5 --> F8[输出query_plan含joins]
-    F7 --> F8
-    F6 --> F8
-```
-
-说明：缺失关联语义关键词包括“未关联、没有关联、无关联、未匹配、不存在、为空、缺失、未配置”等。
-
-## 5. 步骤05 与 05B（条件筛选和值归一）
+## 4. 步骤05 与 05B（条件筛选和值归一）
 
 ```mermaid
 flowchart TD
@@ -120,7 +100,7 @@ flowchart TD
     H8 --> H9
 ```
 
-## 6. 步骤08 SQL生成（INNER和LEFT）
+## 5. 步骤08 SQL生成（INNER和LEFT）
 
 ```mermaid
 flowchart TD
@@ -144,7 +124,7 @@ flowchart TD
 - 未下沉的条件才放 `WHERE`。
 - 这样可以避免 `LEFT JOIN` 被错误退化为 `INNER JOIN`。
 
-## 7. 步骤09 执行计算（SQL优先）
+## 6. 步骤09 执行计算（SQL优先）
 
 ```mermaid
 flowchart TD
@@ -165,7 +145,7 @@ flowchart TD
     J9 --> J10[输出compute_result]
 ```
 
-## 8. 步骤10到12（质检 回答 图表）
+## 7. 步骤10到12（质检 回答 图表）
 
 ```mermaid
 flowchart TD
@@ -187,7 +167,7 @@ flowchart TD
     M1 -- 否 --> M3[跳过图表]
 ```
 
-## 9. 关键过滤点与兜底点（更新后）
+## 8. 关键过滤点与兜底点（更新后）
 
 ### 关键过滤点
 - Step00：LLM规划结果会做结构合法性校验，不合法回退规则拆解。

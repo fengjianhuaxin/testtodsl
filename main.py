@@ -68,12 +68,6 @@ def cmd_mapping(args):
     print(mm.to_description())
 
 
-def cmd_generate_data(args):
-    """Deprecated data generation command."""
-    print("当前项目已切换为单数据源模式，generate-data 示例数据已弃用。")
-    print("如需重建本体与映射，请使用管理端“导入本体Excel”或运行 import_xksx_ontology_mapping.py。")
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="本体问数系统 CLI",
@@ -106,9 +100,6 @@ def main():
     p_map = subparsers.add_parser("mapping", help="查看映射配置")
     p_map.add_argument("action", choices=["show"], help="操作类型")
     p_map.set_defaults(func=cmd_mapping)
-
-    p_gen = subparsers.add_parser("generate-data", help="生成样例数据")
-    p_gen.set_defaults(func=cmd_generate_data)
 
     args = parser.parse_args()
     if not args.command:
