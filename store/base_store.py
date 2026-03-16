@@ -12,17 +12,6 @@ class DataStore(ABC):
     """数据存储抽象基类（当前 Sheet 实现，后续 MySQL）"""
 
     @abstractmethod
-    def load_table(self, source_id: str, entity_name: str) -> pd.DataFrame:
-        """加载指定数据源的指定实体对应的表数据"""
-        pass
-
-    @abstractmethod
-    def query(self, source_id: str, entity_name: str,
-              conditions: list = None, fields: list = None) -> pd.DataFrame:
-        """带条件查询"""
-        pass
-
-    @abstractmethod
-    def execute_join(self, source_id: str, join_spec: dict) -> pd.DataFrame:
-        """执行多表关联查询"""
+    def execute_sql(self, source_id: str, sql: str) -> pd.DataFrame:
+        """Execute SQL and return a DataFrame."""
         pass

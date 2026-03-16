@@ -40,7 +40,8 @@ class Orchestrator:
         self.llm = QwenClient()
         self.splitter = QuestionSplitAgent(self.llm, self.prompts)
 
-        self.run_id = time.strftime("%Y%m%d_%H%M%S")
+        # Avoid collisions when creating orchestrators in a tight loop (batch runs).
+        self.run_id = f"{time.strftime('%Y%m%d_%H%M%S')}_{time.time_ns() % 1_000_000_000:09d}"
         self.output_dir = os.path.join(config.OUTPUT_DIR, self.run_id)
         os.makedirs(self.output_dir, exist_ok=True)
 
@@ -53,7 +54,7 @@ class Orchestrator:
             ("06_字段提取B", FieldExtractAgent(self.ontology)),
             ("07_计算方法C", CalcMethodAgent(self.mapping)),
             ("08_DSL查询", DSLQueryAgent(self.llm, self.mapping, self.ontology)),
-            ("09_计算执行", ComputeAgent(self.data_store, self.mapping, self.ontology)),
+            ("09_计算执行", ComputeAgent(self.data_store)),
             ("10_质检验证", QualityCheckAgent()),
             ("11_答案回复", AnswerAgent(self.llm, self.prompts)),
             ("12_图表报告", ChartAgent(self.output_dir)),

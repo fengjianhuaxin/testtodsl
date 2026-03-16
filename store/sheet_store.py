@@ -197,51 +197,6 @@ class SheetDataStore(DataStore):
             _load_one(left_table, "")
             _load_one(right_table, "")
 
-    def execute_join(self, source_id: str, join_spec: dict) -> pd.DataFrame:
-        """执行多表关联查询
-        
-        Args:
-            join_spec: {
-                "base_entity": str,
-                "joins": [{"entity": str, "left_on": str, "right_on": str}, ...],
-                "conditions": [...],  # 可选
-                "fields": [...]       # 可选
-            }
-        """
-        base_entity = join_spec["base_entity"]
-        df = self.load_table(source_id, base_entity)
-
-        for join in join_spec.get("joins", []):
-            join_df = self.load_table(source_id, join["entity"])
-            df = df.merge(join_df, left_on=join["left_on"], right_on=join["right_on"],
-                         how="left", suffixes=("", f"_{join['entity']}"))
-
-        # 应用条件
-        conditions = join_spec.get("conditions", [])
-        if conditions:
-            for cond in conditions:
-                field = cond["field"]
-                op = cond["op"]
-                value = cond["value"]
-                if field in df.columns:
-                    if op == "=":
-                        df = df[df[field] == value]
-                    elif op == ">":
-                        df = df[df[field] > value]
-                    elif op == "<":
-                        df = df[df[field] < value]
-                    elif op == "contains":
-                        df = df[df[field].astype(str).str.contains(str(value), na=False)]
-
-        # 选择字段
-        fields = join_spec.get("fields")
-        if fields:
-            valid_fields = [f for f in fields if f in df.columns]
-            if valid_fields:
-                df = df[valid_fields]
-
-        return df.reset_index(drop=True)
-
     def aggregate(self, source_id: str, entity_name: str,
                   group_by: list = None, agg_specs: list = None,
                   conditions: list = None) -> pd.DataFrame:

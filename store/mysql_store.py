@@ -118,45 +118,6 @@ class MySQLDataStore(DataStore):
 
         return df.reset_index(drop=True)
 
-    def execute_join(self, source_id: str, join_spec: dict) -> pd.DataFrame:
-        base_entity = join_spec["base_entity"]
-        dataframe = self.load_table(source_id, base_entity)
-
-        for join in join_spec.get("joins", []):
-            join_df = self.load_table(source_id, join["entity"])
-            dataframe = dataframe.merge(
-                join_df,
-                left_on=join["left_on"],
-                right_on=join["right_on"],
-                how="left",
-                suffixes=("", f"_{join['entity']}"),
-            )
-
-        conditions = join_spec.get("conditions", [])
-        if conditions:
-            for condition in conditions:
-                field = condition["field"]
-                op = condition["op"]
-                value = condition["value"]
-                if field not in dataframe.columns:
-                    continue
-                if op == "=":
-                    dataframe = dataframe[dataframe[field] == value]
-                elif op == ">":
-                    dataframe = dataframe[dataframe[field] > value]
-                elif op == "<":
-                    dataframe = dataframe[dataframe[field] < value]
-                elif op == "contains":
-                    dataframe = dataframe[dataframe[field].astype(str).str.contains(str(value), na=False)]
-
-        fields = join_spec.get("fields")
-        if fields:
-            valid_fields = [field for field in fields if field in dataframe.columns]
-            if valid_fields:
-                dataframe = dataframe[valid_fields]
-
-        return dataframe.reset_index(drop=True)
-
     def aggregate(self, source_id: str, entity_name: str, group_by: list = None, agg_specs: list = None, conditions: list = None) -> pd.DataFrame:
         dataframe = self.query(source_id, entity_name, conditions=conditions)
         if not agg_specs:
